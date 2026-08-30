@@ -420,10 +420,17 @@ class MessagesScreen : public UIScreen {
   // Delivery marker, drawn with the current ink colour and auto-scaled to the
   // font (see icons.h). Pending = a row of dots, one per send (so it grows with
   // each auto-resend); delivered = ✓; failed = ✗; ACK_NONE = nothing.
-  static void drawAckGlyph(DisplayDriver& d, int x, int top_y, AckState s, int sends = 1) {
+  // relay_count (channel sends only): when > 0, replaces the ✓ with the
+  // distinct-repeater echo count as tiny digit icons -- the count alone
+  // already says "confirmed", so showing the checkmark too is redundant; a
+  // DM's ✓ (no such count) leaves it 0 and keeps the plain checkmark.
+  static void drawAckGlyph(DisplayDriver& d, int x, int top_y, AckState s, int sends = 1, int relay_count = 0) {
     switch (s) {
       case ACK_PENDING: miniIconDotRow(d, x, top_y, sends);          break;
-      case ACK_OK:      miniIconDraw(d, x, top_y, ICON_CHECK);       break;
+      case ACK_OK:
+        if (relay_count > 0) miniIconDrawNumber(d, x, top_y, relay_count);
+        else                 miniIconDraw(d, x, top_y, ICON_CHECK);
+        break;
       case ACK_FAIL:    miniIconDraw(d, x, top_y, ICON_CROSS);       break;
       default: break;                          // ACK_NONE → nothing
     }
@@ -447,11 +454,11 @@ class MessagesScreen : public UIScreen {
 
   // Width of an ack/delivery glyph (see drawAckGlyph) — needed up front to size
   // an outgoing bubble before it's drawn.
-  static int ackGlyphWidth(DisplayDriver& d, AckState s, int sends) {
+  static int ackGlyphWidth(DisplayDriver& d, AckState s, int sends, int relay_count = 0) {
     const int sc = miniIconScale(d);
     switch (s) {
       case ACK_PENDING: return sends * 3 * sc;   // dot+gap pitch (icons.h), slightly generous
-      case ACK_OK:      return ICON_CHECK.w * sc;
+      case ACK_OK:      return relay_count > 0 ? miniIconNumberWidth(d, relay_count) : ICON_CHECK.w * sc;
       case ACK_FAIL:    return ICON_CROSS.w * sc;
       default:          return 0;
     }
@@ -1334,10 +1341,13 @@ public:
           int ret = _fs.render(display, fsender, fmsg,
                                _hist_sel < fs_hist_count - 1,
                                _hist_sel > 0);
-          // Channels: ✓ only once a repeater echo confirms relay (see list view).
+          // Channels: ✓ only once a repeater echo confirms relay (see list view),
+          // plus the distinct-echoing-repeater count as tiny digits (path_len's
+          // hop_count -- see markChannelRelayed/showPathDetail's "Relayed by").
           if (strcmp(fsender, "Me") == 0 && _history.chAtPos(ring_pos).relay_status == ACK_OK) {
             display.setColor(DisplayDriver::DARK);
-            drawAckGlyph(display, 2 + display.getTextWidth(fsender) + 3, 1, ACK_OK);
+            int relay_count = _history.chAtPos(ring_pos).path_len & 63;
+            drawAckGlyph(display, 2 + display.getTextWidth(fsender) + 3, 1, ACK_OK, 1, relay_count);
             display.setColor(DisplayDriver::LIGHT);
           }
           if (_ctx_menu.active) _ctx_menu.render(display);
@@ -1437,8 +1447,9 @@ public:
         // was relayed into the mesh; otherwise no marker (absence is normal).
         bool outgoing = strcmp(sender, "Me") == 0;
         bool show_ack = outgoing && _history.chAtPos(ring_pos).relay_status == ACK_OK;
+        int relay_count = show_ack ? (_history.chAtPos(ring_pos).path_len & 63) : 0;
         int full_avail = display.width() - reserve;
-        int ack_w = show_ack ? (3 + ackGlyphWidth(display, ACK_OK, 1)) : 0;
+        int ack_w = show_ack ? (3 + ackGlyphWidth(display, ACK_OK, 1, relay_count)) : 0;
         int header_w = 3 + display.getTextWidth(sender) + ack_w + age_w + 3;
         int body_w, nl = 0;
         if (portrait_expand) {
@@ -1458,7 +1469,7 @@ public:
         display.drawTextEllipsized(box.x + 3, y + 1, box.w - 6 - age_w, sender);
         if (show_ack) {
           int gx = box.x + 3 + display.getTextWidth(sender) + 3;
-          drawAckGlyph(display, gx, y + 1, ACK_OK);
+          drawAckGlyph(display, gx, y + 1, ACK_OK, 1, relay_count);
         }
         if (age[0]) { display.setCursor(box.x + box.w - age_w, y + 1); display.print(age); }
         if (!sel) display.setColor(DisplayDriver::LIGHT);

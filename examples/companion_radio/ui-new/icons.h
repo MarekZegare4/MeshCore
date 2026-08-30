@@ -125,6 +125,96 @@ MINI_ICON(ICON_CROSS, 4,   // ✗
   packRow(".##."),
   packRow("#..#"));
 
+// Tiny 3×5 digits — for a small count that needs to sit in an icon-sized slot
+// (e.g. next to ICON_CHECK) where the normal font is too tall to fit. See
+// miniIconDrawNumber/miniIconNumberWidth below.
+MINI_ICON(ICON_DIGIT_0, 3,
+  packRow("###"), 
+  packRow("#.#"), 
+  packRow("#.#"), 
+  packRow("#.#"),
+  packRow("###"));
+MINI_ICON(ICON_DIGIT_1, 3,
+  packRow(".#."), 
+  packRow("##."), 
+  packRow(".#."), 
+  packRow(".#."), 
+  packRow("###"));
+MINI_ICON(ICON_DIGIT_2, 3,
+  packRow("###"), 
+  packRow("..#"), 
+  packRow("###"), 
+  packRow("#.."), 
+  packRow("###"));
+MINI_ICON(ICON_DIGIT_3, 3,
+  packRow("###"), 
+  packRow("..#"), 
+  packRow("###"), 
+  packRow("..#"), 
+  packRow("###"));
+MINI_ICON(ICON_DIGIT_4, 3,
+  packRow("#.#"), 
+  packRow("#.#"), 
+  packRow("###"), 
+  packRow("..#"), 
+  packRow("..#"));
+MINI_ICON(ICON_DIGIT_5, 3,
+  packRow("###"), 
+  packRow("#.."), 
+  packRow("###"), 
+  packRow("..#"), 
+  packRow("###"));
+MINI_ICON(ICON_DIGIT_6, 3,
+  packRow("###"), 
+  packRow("#.."), 
+  packRow("###"), 
+  packRow("#.#"), 
+  packRow("###"));
+MINI_ICON(ICON_DIGIT_7, 3,
+  packRow("###"), 
+  packRow("..#"), 
+  packRow("..#"), 
+  packRow("..#"), 
+  packRow("..#"));
+MINI_ICON(ICON_DIGIT_8, 3,
+  packRow("###"), 
+  packRow("#.#"), 
+  packRow("###"), 
+  packRow("#.#"), 
+  packRow("###"));
+MINI_ICON(ICON_DIGIT_9, 3,
+  packRow("###"), 
+  packRow("#.#"), 
+  packRow("###"), 
+  packRow("..#"), 
+  packRow("###"));
+
+static constexpr const MiniIcon* MINI_ICON_DIGITS[10] = {
+  &ICON_DIGIT_0, &ICON_DIGIT_1, &ICON_DIGIT_2, &ICON_DIGIT_3, &ICON_DIGIT_4,
+  &ICON_DIGIT_5, &ICON_DIGIT_6, &ICON_DIGIT_7, &ICON_DIGIT_8, &ICON_DIGIT_9,
+};
+
+// Width a count would occupy via miniIconDrawNumber (digit width + 1px gap
+// between digits, scaled) — needed up front to size a header around it.
+// Clamped to 2 digits (0-99): callers showing a repeater/echo count never see
+// more than MAX_HIST_PATH_BYTES distinct hashes anyway (16 max).
+inline int miniIconNumberWidth(DisplayDriver& d, int n) {
+  const int s = miniIconScale(d);
+  int digits = (n >= 10) ? 2 : 1;
+  return digits * 3 * s + (digits - 1) * s;
+}
+
+// Draws `n` (clamped to 0-99) as a left-to-right run of tiny digit icons —
+// e.g. a repeater/echo count too small a slot for the normal font to fit
+// legibly. Vertically centred in the text line the same way miniIconDraw is.
+inline void miniIconDrawNumber(DisplayDriver& d, int x, int top_y, int n) {
+  const int s = miniIconScale(d);
+  if (n < 0) n = 0;
+  if (n > 99) n = 99;
+  if (n >= 10) { miniIconDraw(d, x, top_y, *MINI_ICON_DIGITS[n / 10]); x += 3 * s + s; }
+  miniIconDraw(d, x, top_y, *MINI_ICON_DIGITS[n % 10]);
+}
+
 // Top-bar status glyphs (replace the single-letter M / B / A indicators).
 MINI_ICON(ICON_MUTE, 6,   // speaker + cross (sound off)
   packRow("..#..."),
