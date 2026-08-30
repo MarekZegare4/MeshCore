@@ -15,6 +15,7 @@ class SerialBLEInterface : public BaseSerialInterface {
   uint16_t _conn_handle;
   unsigned long _last_health_check;
   unsigned long _last_retry_attempt;
+  unsigned long _retry_backoff_ms;   // 0 == not yet backed off; grows on repeated failed sends
 
   struct Frame {
     uint8_t len;
@@ -49,6 +50,7 @@ public:
     _conn_handle = BLE_CONN_HANDLE_INVALID;
     _last_health_check = 0;
     _last_retry_attempt = 0;
+    _retry_backoff_ms = 0;
     send_queue_len = 0;
     recv_queue_len = 0;
   }
