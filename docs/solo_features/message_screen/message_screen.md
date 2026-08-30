@@ -64,7 +64,7 @@ Posting to a **room server** needs a login handshake — the device does this on
 
 Messages appear as chat bubbles sized to their content — **right**-anchored for outgoing, **left** for incoming — with sender name and a compact age indicator (`3m`, `2h`, `>1d`) in the top-right corner. List runs **newest at the bottom**; opening a history starts at the latest message, scrolling up goes further back.
 
-**Short Enter** on a message opens it in fullscreen. **Hold Enter** — on a history row or in fullscreen — opens the same options menu: Reply, plus **Navigate** / **Save waypoint** when the message contains a location (see Fullscreen message view). You don't need to open the message first.
+**Short Enter** on a message opens it in fullscreen. **Hold Enter** — on a history row or in fullscreen — opens the same options menu: Reply, plus **Navigate** / **Save waypoint** when the message contains a location, and **Path** / **Relayed by** when hop data is available (see Fullscreen message view). You don't need to open the message first.
 
 ---
 
@@ -88,6 +88,13 @@ If the message is a reply addressed to someone (`@[nick]`), a **To: nick** bar i
 - **Save waypoint** — stores the location as a waypoint (visible on the trail map and in the Waypoints list).
 
 A location is any `lat,lon` pair in the text — exactly what the `{loc}` placeholder inserts — so you can navigate to anything a contact shares. A `[WAY]lat,lon label` share also carries a name, used as the waypoint label. This works on DMs and channel messages, incoming or outgoing.
+
+When the entry has hop data recorded, the menu also adds one more row:
+
+- **Path (N hops)** — on a received message (DM or channel), lists every repeater the message actually travelled through to reach you, oldest hop first.
+- **Relayed by (N)** — on your own channel post instead, lists every distinct repeater heard rebroadcasting it back into the mesh (order isn't meaningful here — each one heard it independently, not as a chain).
+
+Selecting the row opens a read-only list of the resolved hops — each shown as the matching contact's name where one is known, or a short `?AABB`-style hex tag for an unrecognised repeater. Only repeaters within range of the message's actual travel — or, for **Relayed by**, within your own device's radio range — can ever be identified this way; a message with no recorded path (e.g. a zero-hop send, or one sent before any repeater relayed or echoed it) doesn't show this row at all.
 
 ---
 

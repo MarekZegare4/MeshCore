@@ -22,12 +22,40 @@ enum AckState : uint8_t { ACK_NONE = 0, ACK_PENDING, ACK_OK, ACK_FAIL };
 // get their tail clipped.
 static const int MSG_TEXT_BUF = MAX_TEXT_LEN + 1;
 
+// Cap on the per-entry path/relay-hash buffer below. Real mesh hop depths are
+// small in practice (a handful at most), so this comfortably covers any
+// realistic path at any path_hash_mode (16 hops at 1-byte hashes, down to 4 at
+// 4-byte) without the RAM cost of sizing every ring entry to MAX_PATH_SIZE (64).
+// A path deeper than this is silently truncated to the first entries that fit
+// (capturePath() below keeps the stored hop count consistent with what's
+// actually copied, so a display walk over the buffer can never run past it).
+static const uint8_t MAX_HIST_PATH_BYTES = 16;
+
+// Copies up to MAX_HIST_PATH_BYTES of a mesh::Packet-style path into dest_path,
+// capping the hop count encoded in dest_len so the two always agree. src_len_packed
+// uses the same (hash_size-1)<<6|hash_count packing as mesh::Packet::path_len.
+inline void capturePath(uint8_t& dest_len, uint8_t* dest_path, const uint8_t* src_path, uint8_t src_len_packed) {
+  uint8_t hash_size = (src_len_packed >> 6) + 1;
+  uint8_t hash_count = src_len_packed & 63;
+  uint8_t max_hops = MAX_HIST_PATH_BYTES / hash_size;
+  if (hash_count > max_hops) hash_count = max_hops;
+  memcpy(dest_path, src_path, (size_t)hash_count * hash_size);
+  dest_len = ((hash_size - 1) << 6) | hash_count;
+}
+
 struct ChHistEntry {
   uint8_t  ch_idx;
   char     text[MSG_TEXT_BUF];
   uint32_t timestamp;
   uint8_t  relay_status;   // AckState; only PENDING/OK used (no failure for floods)
   uint32_t relay_seq;      // MyMesh relay seq to match against onChannelRelayed()
+  // Incoming: the hop path this post actually took to reach us (resolved to
+  // repeater names by the UI). Outgoing: repurposed to hold the distinct
+  // repeater hashes that have echoed this send back (see markChannelRelayed) --
+  // a message is never both directions at once, so one buffer serves either.
+  // path_len packs (hash_size-1)<<6|hop_count, same as mesh::Packet::path_len.
+  uint8_t  path_len;
+  uint8_t  path[MAX_HIST_PATH_BYTES];
 };
 
 struct DmHistEntry {
@@ -44,6 +72,11 @@ struct DmHistEntry {
   uint32_t msg_ts;
   uint8_t  attempt;          // last attempt number sent (outgoing); next resend = attempt+1
   uint8_t  resends_left;     // remaining auto-resends before the marker shows ✗
+  // Incoming only -- the hop path this DM took to reach us. A DM's outgoing
+  // confirmation is the real end-to-end ack_status/ack_tag above (not a
+  // repeater-echo concept), so this stays unset (0) for outgoing entries.
+  uint8_t  path_len;
+  uint8_t  path[MAX_HIST_PATH_BYTES];
 };
 
 class MessageHistory {
@@ -65,7 +98,11 @@ public:
   // channel's history (so it isn't counted unread). `timestamp` is the sender's
   // own send time (0 = unknown — use receipt time). Returns the ring position
   // (an opaque handle for armChannelRelay / chAtPos), or -1 if rejected.
-  int addChannelMsg(uint8_t ch_idx, const char* text, bool viewing, uint32_t timestamp = 0) {
+  // path/path_len_packed: the hop path this incoming post actually took (from
+  // the received mesh::Packet), or nullptr/0 when not known (e.g. this is our
+  // own outgoing post, before any relay echo has arrived).
+  int addChannelMsg(uint8_t ch_idx, const char* text, bool viewing, uint32_t timestamp = 0,
+                     const uint8_t* path = nullptr, uint8_t path_len_packed = 0) {
     // Guard against bogus channel indices (e.g. findChannelIdx() returned -1
     // and was cast to uint8_t → 255). Storing such an entry would burn a ring
     // slot for a message that no visible channel can ever surface.
@@ -95,6 +132,8 @@ public:
     _hist[pos].text[sizeof(_hist[pos].text) - 1] = '\0';
     _hist[pos].relay_status = ACK_NONE;
     _hist[pos].relay_seq = 0;
+    if (path && path_len_packed) capturePath(_hist[pos].path_len, _hist[pos].path, path, path_len_packed);
+    else _hist[pos].path_len = 0;
 
     if (!viewing && _ch_unread[ch_idx] < 99) _ch_unread[ch_idx]++;
     return pos;
@@ -122,25 +161,49 @@ public:
     return -1;
   }
 
-  // Called when a repeater echo of one of our channel sends is heard.
-  void markChannelRelayed(uint32_t seq) {
+  // Called when a repeater echo of one of our channel sends is heard. May fire
+  // more than once per send -- every repeater within earshot that independently
+  // rebroadcasts triggers its own call with the same seq -- so this matches on
+  // relay_seq alone (not "still ACK_PENDING") and keeps appending. repeater_hash
+  // (when given) is that repeater's path hash, appended de-duplicated so
+  // "Hold Enter" can list every distinct repeater that confirmed the send.
+  void markChannelRelayed(uint32_t seq, const uint8_t* repeater_hash = nullptr, uint8_t hash_size = 0) {
     if (seq == 0) return;
     for (int i = 0; i < _hist_count; i++) {
       ChHistEntry& e = _hist[(_hist_head + i) % CH_HIST_MAX];
-      if (e.relay_status == ACK_PENDING && e.relay_seq == seq) {
-        e.relay_status = ACK_OK;
-        return;
+      if (e.relay_seq != seq) continue;
+      e.relay_status = ACK_OK;
+      if (repeater_hash && hash_size) {
+        uint8_t cur_size  = (e.path_len >> 6) + 1;
+        uint8_t cur_count = e.path_len & 63;
+        if (cur_count == 0) cur_size = hash_size;  // first hash recorded sets the size for this entry
+        if (cur_size == hash_size) {               // ignore a mismatch rather than corrupt the buffer
+          bool dup = false;
+          for (uint8_t h = 0; h < cur_count; h++) {
+            if (memcmp(&e.path[h * hash_size], repeater_hash, hash_size) == 0) { dup = true; break; }
+          }
+          uint8_t max_hops = MAX_HIST_PATH_BYTES / hash_size;
+          if (!dup && cur_count < max_hops) {
+            memcpy(&e.path[cur_count * hash_size], repeater_hash, hash_size);
+            cur_count++;
+            e.path_len = ((hash_size - 1) << 6) | cur_count;
+          }
+        }
       }
+      return;
     }
   }
 
   // Arm the "relayed into mesh" marker on a just-sent entry (pos from
   // addChannelMsg) — MyMesh tracked the flood it originated and will report a
-  // heard repeater echo by seq.
+  // heard repeater echo by seq. Clears path_len: this entry's path buffer now
+  // holds echoing-repeater hashes (see markChannelRelayed), not a received hop
+  // path, so any stale value from a reused ring slot must not linger.
   void armChannelRelay(int pos, uint32_t seq) {
     if (pos < 0 || pos >= CH_HIST_MAX) return;
     _hist[pos].relay_status = ACK_PENDING;
     _hist[pos].relay_seq    = seq;
+    _hist[pos].path_len     = 0;
   }
 
   ChHistEntry&       chAtPos(int pos)       { return _hist[pos]; }
@@ -184,9 +247,12 @@ public:
   // ack_deadline_ms; 0 means "sent, no confirmation possible" (no path / incoming).
   // msg_ts = sender-perspective timestamp (send ts for outgoing / sender_timestamp
   // for incoming); resends = remaining auto-resends for an outgoing pending DM.
+  // path/path_len_packed: the hop path this incoming DM actually took, or
+  // nullptr/0 for outgoing (no path concept there -- see DmHistEntry).
   void storeDMMsg(const uint8_t* pub_key, bool outgoing, const char* text,
                   uint32_t ack_tag = 0, uint32_t ack_deadline_ms = 0,
-                  uint32_t msg_ts = 0, uint8_t resends = 0) {
+                  uint32_t msg_ts = 0, uint8_t resends = 0,
+                  const uint8_t* path = nullptr, uint8_t path_len_packed = 0) {
     int pos;
     if (_dm_hist_count < DM_HIST_MAX) {
       pos = (_dm_hist_head + _dm_hist_count) % DM_HIST_MAX;
@@ -210,6 +276,8 @@ public:
     _dm_hist[pos].msg_ts          = msg_ts;
     _dm_hist[pos].attempt         = 0;
     _dm_hist[pos].resends_left    = (outgoing && ack_tag) ? resends : 0;
+    if (path && path_len_packed) capturePath(_dm_hist[pos].path_len, _dm_hist[pos].path, path, path_len_packed);
+    else _dm_hist[pos].path_len = 0;
   }
 
   // ack_tag/ack_deadline_ms/resends let an outgoing DM (e.g. one the phone app
@@ -218,7 +286,8 @@ public:
   // shows with no delivery status at all. Unused (0) for incoming.
   void addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text,
                 uint32_t sender_timestamp = 0, uint32_t ack_tag = 0,
-                uint32_t ack_deadline_ms = 0, uint8_t resends = 0) {
+                uint32_t ack_deadline_ms = 0, uint8_t resends = 0,
+                const uint8_t* path = nullptr, uint8_t path_len_packed = 0) {
     // Drop retried copies of an incoming DM: a resend reuses the sender's
     // timestamp and text but carries a fresh packet hash, so the mesh dup-filter
     // lets it through. Match on prefix + sender_timestamp + text to suppress it.
@@ -230,7 +299,7 @@ public:
           return;  // duplicate retry — already in history
       }
     }
-    storeDMMsg(pub_key, outgoing, text, ack_tag, ack_deadline_ms, sender_timestamp, resends);
+    storeDMMsg(pub_key, outgoing, text, ack_tag, ack_deadline_ms, sender_timestamp, resends, path, path_len_packed);
   }
 
   int dmHistCountForContact(const uint8_t* prefix) const {

@@ -385,12 +385,14 @@ public:
   void stopMelody();
   bool isMelodyPlaying();
   void showAlert(const char* text, int duration_millis);
-  int  addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp = 0) override;
+  int  addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp = 0,
+                     const uint8_t* path = nullptr, uint8_t path_len = 0) override;
   void armChannelRelay(int pos, uint32_t seq) override;
   void addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text, uint32_t sender_timestamp = 0,
-               uint32_t ack_tag = 0, uint32_t ack_deadline_ms = 0, uint8_t resends = 0) override;
+               uint32_t ack_tag = 0, uint32_t ack_deadline_ms = 0, uint8_t resends = 0,
+               const uint8_t* path = nullptr, uint8_t path_len = 0) override;
   void onMsgAck(uint32_t ack_crc) override;
-  void onChannelRelayed(uint32_t seq) override;
+  void onChannelRelayed(uint32_t seq, const uint8_t* repeater_hash = nullptr, uint8_t hash_size = 0) override;
   void onRoomLoginResult(const uint8_t* pub_key, bool success, uint8_t permissions) override;
   void onAdminReply(const uint8_t* pub_key, const char* text) override;
   int  getDMUnreadTotal() const;

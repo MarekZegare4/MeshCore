@@ -1766,9 +1766,10 @@ int UITask::getRecentDMContacts(uint8_t out[][NodePrefs::FAVOURITE_PREFIX_LEN], 
   return ((MessagesScreen*)messages_screen)->getRecentDMContacts(out, max);
 }
 
-int UITask::addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp) {
+int UITask::addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp,
+                          const uint8_t* path, uint8_t path_len) {
   _last_notif_ch_idx = (int)channel_idx;
-  return ((MessagesScreen*)messages_screen)->addChannelMsg(channel_idx, text, timestamp);
+  return ((MessagesScreen*)messages_screen)->addChannelMsg(channel_idx, text, timestamp, path, path_len);
 }
 
 void UITask::armChannelRelay(int pos, uint32_t seq) {
@@ -1783,8 +1784,8 @@ void UITask::onMsgAck(uint32_t ack_crc) {
   ((MessagesScreen*)messages_screen)->markDmDelivered(ack_crc);
 }
 
-void UITask::onChannelRelayed(uint32_t seq) {
-  ((MessagesScreen*)messages_screen)->markChannelRelayed(seq);
+void UITask::onChannelRelayed(uint32_t seq, const uint8_t* repeater_hash, uint8_t hash_size) {
+  ((MessagesScreen*)messages_screen)->markChannelRelayed(seq, repeater_hash, hash_size);
 }
 
 void UITask::onRoomLoginResult(const uint8_t* pub_key, bool success, uint8_t permissions) {
@@ -1806,8 +1807,9 @@ void UITask::onAdminReply(const uint8_t* pub_key, const char* text) {
 }
 
 void UITask::addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text, uint32_t sender_timestamp,
-                      uint32_t ack_tag, uint32_t ack_deadline_ms, uint8_t resends) {
-  ((MessagesScreen*)messages_screen)->addDMMsg(pub_key, outgoing, text, sender_timestamp, ack_tag, ack_deadline_ms, resends);
+                      uint32_t ack_tag, uint32_t ack_deadline_ms, uint8_t resends,
+                      const uint8_t* path, uint8_t path_len) {
+  ((MessagesScreen*)messages_screen)->addDMMsg(pub_key, outgoing, text, sender_timestamp, ack_tag, ack_deadline_ms, resends, path, path_len);
 }
 
 int UITask::getDMUnreadTotal() const {

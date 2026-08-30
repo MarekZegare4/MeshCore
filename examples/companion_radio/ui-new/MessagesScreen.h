@@ -71,11 +71,28 @@ class MessagesScreen : public UIScreen {
 
   // Fullscreen-message context menu actions. Built per-message: Reply (when
   // applicable) plus Navigate / Save waypoint when the message carries a
-  // location (a {loc} string or a [WAY] share). _fs_act maps each visible row
-  // back to an action so the index math survives the conditional layout.
-  enum FsAct : uint8_t { FS_REPLY, FS_NAV, FS_SAVE };
-  uint8_t   _fs_act[3];
+  // location (a {loc} string or a [WAY] share), plus Path/Relayed by when the
+  // entry has hop data recorded. _fs_act maps each visible row back to an
+  // action so the index math survives the conditional layout.
+  enum FsAct : uint8_t { FS_REPLY, FS_NAV, FS_SAVE, FS_PATH };
+  uint8_t   _fs_act[4];
   int       _fs_act_n = 0;
+  // Which history entry the currently-open Options menu (and, after FS_PATH is
+  // chosen, the path/relay detail popup) refers to -- set by buildFsMenu().
+  int       _fs_menu_pos = -1;
+  bool      _fs_menu_is_channel = false;
+  // True while _ctx_menu is showing the path/relay detail list (opened from
+  // FS_PATH) rather than the original Reply/Navigate/... Options menu -- the
+  // detail list is purely informational, so any input just dismisses it
+  // instead of being routed through dispatchFsAction()'s stale _fs_act mapping.
+  bool      _showing_path_detail = false;
+  // Resolved hop labels for the path/relay detail popup -- PopupMenu only
+  // stores the pointers it's given (see PopupMenu.h), so these must outlive
+  // the popup across renders, hence a member buffer, not a stack-local one.
+  char      _path_detail_names[MAX_HIST_PATH_BYTES][24];
+  // "Path (N hops)" / "Relayed by (N)" Options-row label -- same lifetime
+  // requirement as _path_detail_names above (PopupMenu stores the pointer).
+  char      _fs_path_item[24];
   // Inline navigate-to-location view layered over the fullscreen message.
   bool      _nav_active = false;
   int32_t   _nav_lat = 0, _nav_lon = 0;
@@ -267,19 +284,86 @@ class MessagesScreen : public UIScreen {
     _phase = KEYBOARD;
   }
 
-  // Build the fullscreen-message options popup: Reply (if allowed) plus
-  // Navigate / Save waypoint when `body` carries a location. Opens _ctx_menu
-  // only when there's at least one action. Parses the location once here and
-  // stashes it for the action handler.
-  void buildFsMenu(const char* body, bool reply_allowed) {
+  // Build the fullscreen-message options popup: Reply (if allowed), Navigate /
+  // Save waypoint when `body` carries a location, and Path / Relayed by when
+  // the entry (ring_pos, in the DM ring or the channel ring per is_channel)
+  // has hop data recorded. Opens _ctx_menu only when there's at least one
+  // action. Parses the location once here and stashes it for the action
+  // handler; stashes ring_pos/is_channel too, for showPathDetail().
+  void buildFsMenu(const char* body, bool reply_allowed, int ring_pos, bool is_channel) {
+    _fs_menu_pos = ring_pos;
+    _fs_menu_is_channel = is_channel;
+    _showing_path_detail = false;
     bool has_loc = geo::parseLatLon(body, _nav_lat, _nav_lon, _nav_label, sizeof(_nav_label));
-    int n = (reply_allowed ? 1 : 0) + (has_loc ? 2 : 0);
+
+    uint8_t hop_count = 0;
+    bool path_is_relay = false;   // outgoing channel: path[] holds echoing-repeater hashes, not a received route
+    if (ring_pos >= 0) {
+      uint8_t path_len_packed = is_channel ? _history.chAtPos(ring_pos).path_len : _history.dmAtPos(ring_pos).path_len;
+      hop_count = path_len_packed & 63;
+      if (is_channel) path_is_relay = (_history.chAtPos(ring_pos).relay_seq != 0);
+    }
+    bool has_path_item = hop_count > 0;
+
+    int n = (reply_allowed ? 1 : 0) + (has_loc ? 2 : 0) + (has_path_item ? 1 : 0);
     if (n == 0) return;
     _fs_act_n = 0;
     _ctx_menu.begin("Options", n);
     if (reply_allowed) { _ctx_menu.addItem("Reply");         _fs_act[_fs_act_n++] = FS_REPLY; }
     if (has_loc)       { _ctx_menu.addItem("Navigate");      _fs_act[_fs_act_n++] = FS_NAV;
                          _ctx_menu.addItem("Save waypoint"); _fs_act[_fs_act_n++] = FS_SAVE; }
+    if (has_path_item) {
+      if (path_is_relay) snprintf(_fs_path_item, sizeof(_fs_path_item), "Relayed by (%u)", (unsigned)hop_count);
+      else               snprintf(_fs_path_item, sizeof(_fs_path_item), "Path (%u hop%s)", (unsigned)hop_count, hop_count == 1 ? "" : "s");
+      _ctx_menu.addItem(_fs_path_item);
+      _fs_act[_fs_act_n++] = FS_PATH;
+    }
+  }
+
+  // Resolve one hop's path hash to a contact name, falling back to a short hex
+  // tag ("?AABB") when no known contact matches -- an unnamed/unknown repeater,
+  // or one whose contact card has since been removed.
+  void resolveHopName(const uint8_t* hash, uint8_t hash_size, char* out, size_t out_sz) {
+    for (int idx = 0; ; idx++) {
+      ContactInfo c;
+      if (!the_mesh.getContactByIdx(idx, c)) break;
+      if (c.id.isHashMatch(hash, hash_size)) {
+        snprintf(out, out_sz, "%s", c.name);
+        return;
+      }
+    }
+    char hex[9] = {0};
+    uint8_t n = hash_size > 4 ? 4 : hash_size;
+    for (uint8_t b = 0; b < n; b++) snprintf(hex + b * 2, 3, "%02X", hash[b]);
+    snprintf(out, out_sz, "?%s", hex);
+  }
+
+  // Opens the path/relay detail popup for the entry stashed by buildFsMenu().
+  // Incoming: hops listed oldest-hop-first (the order they were appended as the
+  // message travelled). Outgoing channel: each distinct repeater heard echoing
+  // the send, order not meaningful (they're independent, not a chain).
+  void showPathDetail() {
+    if (_fs_menu_pos < 0) return;
+    uint8_t path_len_packed;
+    const uint8_t* path;
+    bool path_is_relay = false;
+    if (_fs_menu_is_channel) {
+      ChHistEntry& e = _history.chAtPos(_fs_menu_pos);
+      path_len_packed = e.path_len; path = e.path; path_is_relay = (e.relay_seq != 0);
+    } else {
+      DmHistEntry& e = _history.dmAtPos(_fs_menu_pos);
+      path_len_packed = e.path_len; path = e.path;
+    }
+    uint8_t hash_size = (path_len_packed >> 6) + 1;
+    uint8_t hop_count = path_len_packed & 63;
+    if (hop_count == 0) return;
+    if (hop_count > MAX_HIST_PATH_BYTES) hop_count = MAX_HIST_PATH_BYTES;   // matches _path_detail_names capacity
+    for (uint8_t i = 0; i < hop_count; i++) {
+      resolveHopName(&path[i * hash_size], hash_size, _path_detail_names[i], sizeof(_path_detail_names[i]));
+    }
+    _ctx_menu.begin(path_is_relay ? "Relayed by" : "Path", hop_count);
+    for (uint8_t i = 0; i < hop_count; i++) _ctx_menu.addItem(_path_detail_names[i]);
+    _showing_path_detail = true;
   }
 
   // Dispatch the selected fullscreen-options row. `channel` picks which
@@ -293,8 +377,10 @@ class MessagesScreen : public UIScreen {
       startReply(channel);
     } else if (a == FS_NAV) {
       _nav_active = true;            // keep the message view active underneath
-    } else {
+    } else if (a == FS_SAVE) {
       saveSharedWaypoint();
+    } else if (a == FS_PATH) {
+      showPathDetail();
     }
   }
 
@@ -648,9 +734,10 @@ public:
   // forwarders to the history store. addChannelMsg computes the "viewing" flag
   // (a phase-machine fact the store can't see) and returns the ring position so
   // the outgoing path can attach a relay seq to that exact entry.
-  int addChannelMsg(uint8_t ch_idx, const char* text, uint32_t timestamp = 0) {
+  int addChannelMsg(uint8_t ch_idx, const char* text, uint32_t timestamp = 0,
+                    const uint8_t* path = nullptr, uint8_t path_len = 0) {
     bool viewing = (_phase == CHANNEL_HIST && _sel_channel_idx == (int)ch_idx);
-    int pos = _history.addChannelMsg(ch_idx, text, viewing, timestamp);
+    int pos = _history.addChannelMsg(ch_idx, text, viewing, timestamp, path, path_len);
     // Ring entries are numbered newest-first (0 == newest), so a new insert
     // shifts every older message's index up by one. If the user has scrolled
     // up to an older message (_hist_sel > 0), re-point the selection at that
@@ -660,13 +747,16 @@ public:
     if (viewing && _hist_sel > 0) { _hist_sel++; _hist_scroll++; }
     return pos;
   }
-  void markChannelRelayed(uint32_t seq) { _history.markChannelRelayed(seq); }
+  void markChannelRelayed(uint32_t seq, const uint8_t* repeater_hash = nullptr, uint8_t hash_size = 0) {
+    _history.markChannelRelayed(seq, repeater_hash, hash_size);
+  }
   void armChannelRelay(int pos, uint32_t seq) { _history.armChannelRelay(pos, seq); }
   void addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text,
                 uint32_t sender_timestamp = 0, uint32_t ack_tag = 0,
-                uint32_t ack_deadline_ms = 0, uint8_t resends = 0) {
+                uint32_t ack_deadline_ms = 0, uint8_t resends = 0,
+                const uint8_t* path = nullptr, uint8_t path_len = 0) {
     bool viewing = (_phase == DM_HIST && memcmp(_sel_contact.id.pub_key, pub_key, 4) == 0);
-    _history.addDMMsg(pub_key, outgoing, text, sender_timestamp, ack_tag, ack_deadline_ms, resends);
+    _history.addDMMsg(pub_key, outgoing, text, sender_timestamp, ack_tag, ack_deadline_ms, resends, path, path_len);
     if (viewing && _dm_hist_sel > 0) { _dm_hist_sel++; _dm_hist_scroll++; }   // see addChannelMsg
   }
   void markDmDelivered(uint32_t ack_crc) { _history.markDmDelivered(ack_crc); }
@@ -1823,7 +1913,9 @@ public:
       if (_dm_fs.active) {
         if (_ctx_menu.active) {
           auto res = _ctx_menu.handleInput(c);
-          if (res == PopupMenu::SELECTED) {
+          if (_showing_path_detail) {
+            if (res != PopupMenu::NONE) { _ctx_menu.active = false; _showing_path_detail = false; }
+          } else if (res == PopupMenu::SELECTED) {
             dispatchFsAction(false);
           } else if (res != PopupMenu::NONE) {
             _ctx_menu.active = false;
@@ -1842,14 +1934,16 @@ public:
           if (ring_pos >= 0) {
             bool reply_ok = !_history.dmAtPos(ring_pos).outgoing;
             if (reply_ok) buildDmReplyPrefix(_history.dmAtPos(ring_pos));
-            buildFsMenu(_history.dmAtPos(ring_pos).text, reply_ok);
+            buildFsMenu(_history.dmAtPos(ring_pos).text, reply_ok, ring_pos, false);
           }
         }
         return true;
       }
       if (_ctx_menu.active) {
         auto res = _ctx_menu.handleInput(c);
-        if (res == PopupMenu::SELECTED) {
+        if (_showing_path_detail) {
+          if (res != PopupMenu::NONE) { _ctx_menu.active = false; _showing_path_detail = false; }
+        } else if (res == PopupMenu::SELECTED) {
           dispatchFsAction(false);
         } else if (res != PopupMenu::NONE) {
           _ctx_menu.active = false;
@@ -1903,7 +1997,7 @@ public:
         if (ring_pos >= 0) {
           bool reply_ok = !_history.dmAtPos(ring_pos).outgoing;
           if (reply_ok) buildDmReplyPrefix(_history.dmAtPos(ring_pos));
-          buildFsMenu(_history.dmAtPos(ring_pos).text, reply_ok);
+          buildFsMenu(_history.dmAtPos(ring_pos).text, reply_ok, ring_pos, false);
         }
         return true;
       }
@@ -1913,7 +2007,9 @@ public:
       if (_fs.active) {
         if (_ctx_menu.active) {
           auto res = _ctx_menu.handleInput(c);
-          if (res == PopupMenu::SELECTED) {
+          if (_showing_path_detail) {
+            if (res != PopupMenu::NONE) { _ctx_menu.active = false; _showing_path_detail = false; }
+          } else if (res == PopupMenu::SELECTED) {
             dispatchFsAction(true);
           } else if (res != PopupMenu::NONE) {
             _ctx_menu.active = false;
@@ -1930,13 +2026,15 @@ public:
         } else if (res == FullscreenMsgView::REPLY) {
           int ring_pos = _history.histEntryForChannel(_sel_channel_idx, _hist_sel);
           if (ring_pos >= 0)
-            buildFsMenu(_history.chAtPos(ring_pos).text, buildChannelReplyPrefix(_history.chAtPos(ring_pos).text));
+            buildFsMenu(_history.chAtPos(ring_pos).text, buildChannelReplyPrefix(_history.chAtPos(ring_pos).text), ring_pos, true);
         }
         return true;
       }
       if (_ctx_menu.active) {
         auto res = _ctx_menu.handleInput(c);
-        if (res == PopupMenu::SELECTED) {
+        if (_showing_path_detail) {
+          if (res != PopupMenu::NONE) { _ctx_menu.active = false; _showing_path_detail = false; }
+        } else if (res == PopupMenu::SELECTED) {
           dispatchFsAction(true);
         } else if (res != PopupMenu::NONE) {
           _ctx_menu.active = false;
@@ -1976,7 +2074,7 @@ public:
       if (c == KEY_CONTEXT_MENU && _hist_sel >= 0) {
         int ring_pos = _history.histEntryForChannel(_sel_channel_idx, _hist_sel);
         if (ring_pos >= 0)
-          buildFsMenu(_history.chAtPos(ring_pos).text, buildChannelReplyPrefix(_history.chAtPos(ring_pos).text));
+          buildFsMenu(_history.chAtPos(ring_pos).text, buildChannelReplyPrefix(_history.chAtPos(ring_pos).text), ring_pos, true);
         return true;
       }
 

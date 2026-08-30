@@ -46,7 +46,12 @@ public:
   virtual void onMsgAck(uint32_t ack_crc) { (void)ack_crc; }
   // A repeater rebroadcast of one of our channel sends was heard (seq from
   // lastChannelRelaySeq()) — drives the channel "relayed into mesh" marker.
-  virtual void onChannelRelayed(uint32_t seq) { (void)seq; }
+  // May fire once per distinct repeater within earshot for the same seq;
+  // repeater_hash/hash_size (when given) is that repeater's path hash, so the
+  // UI can list every repeater that confirmed, not just "was it heard at all".
+  virtual void onChannelRelayed(uint32_t seq, const uint8_t* repeater_hash = nullptr, uint8_t hash_size = 0) {
+    (void)seq; (void)repeater_hash; (void)hash_size;
+  }
   // Result of an on-device-UI-triggered MyMesh::sendRoomLogin() arrived.
   // pub_key is the contact's key prefix (>=4 bytes valid); permissions is the
   // room/repeater ACL byte (only meaningful when success is true).
@@ -87,16 +92,23 @@ public:
   // Returns the new entry's ring position (see MessageHistory::addChannelMsg),
   // or -1 on a UI variant that doesn't track history (default no-op below) --
   // callers that need it (to then arm a relay-echo tracker) should check for
-  // that instead of assuming a valid position.
-  virtual int addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp = 0) { return -1; }
+  // that instead of assuming a valid position. path/path_len (packed
+  // (hash_size-1)<<6|hop_count, same as mesh::Packet::path_len) is the hop
+  // route this incoming post actually took -- nullptr/0 when not known (e.g.
+  // this is our own outgoing post).
+  virtual int addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp = 0,
+                            const uint8_t* path = nullptr, uint8_t path_len = 0) { return -1; }
   // Arms the "relayed into mesh" tracker (a heard repeater rebroadcast) on the
   // entry at ring position pos, e.g. right after addChannelMsg for a channel
   // send this device just originated. seq: MyMesh::lastChannelRelaySeq().
   virtual void armChannelRelay(int pos, uint32_t seq) {}
   // ack_tag/ack_deadline_ms/resends: pending-ACK tracking for an outgoing DM
   // (0 = none, e.g. incoming or "no ack expected") -- see MessageHistory::addDMMsg.
+  // path/path_len: the hop route an incoming DM actually took (nullptr/0 for
+  // outgoing -- a DM's delivery confirmation is the ack_tag above, not a path).
   virtual void addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text, uint32_t sender_timestamp = 0,
-                        uint32_t ack_tag = 0, uint32_t ack_deadline_ms = 0, uint8_t resends = 0) {}
+                        uint32_t ack_tag = 0, uint32_t ack_deadline_ms = 0, uint8_t resends = 0,
+                        const uint8_t* path = nullptr, uint8_t path_len = 0) {}
   // A node shared its current position via a [LOC] message. pub_key is the
   // sender's key prefix for a verified DM share, or null for a channel share
   // (keyed by name, best-effort). Default no-op so UI variants opt in.

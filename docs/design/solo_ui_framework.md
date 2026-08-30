@@ -104,8 +104,17 @@ Drawing helpers (all clip/measure for you):
   in the header, so the menu is discoverable without already knowing the
   shortcut; `menu_open` highlights it while the menu is actually up.
 - `drawSelectionRow(x, y, w, h, sel)` — the highlight bar behind a list row.
-- `drawTextEllipsized(x, y, max_w, str)` — truncates with `…`; **use this for
-  any user string** (names, labels) so long/UTF-8 text can't overrun.
+- `drawTextEllipsized(x, y, max_w, str, selected=false)` — truncates with `…`;
+  **use this for any user string** (names, labels) so long/UTF-8 text can't
+  overrun. Pass `selected=true` for the currently-selected row and the text
+  that doesn't fit marquee-scrolls into view (pause → scroll to the end →
+  pause → scroll back), instead of just sitting behind the ellipsis; returns
+  the ms until the next redraw is needed for that animation to stay smooth
+  (0 when nothing is scrolling) — thread it into your screen's own `render()`
+  return value the same way you already clamp for anything else that needs a
+  faster redraw. Only one row UI-wide marquees at a time (whichever is
+  currently selected), so there's no risk of two animations racing each
+  other for the shared timing state.
 - `drawTextCentered(mid_x, y, str)`.
 - `translateUTF8ToBlocks(dst, src, n)` — map UTF-8 to the panel's glyph set for
   *display only*. Never run text through it before sending it over the air or

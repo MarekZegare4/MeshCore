@@ -545,7 +545,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
     // message fires the notification and reaches the app via the offline queue but
     // never shows when the room is opened directly on the device.
     if (from.type == ADV_TYPE_CHAT) {
-      _ui->addDMMsg(from.id.pub_key, false, text, sender_timestamp);
+      _ui->addDMMsg(from.id.pub_key, false, text, sender_timestamp, 0, 0, 0, pkt->path, (uint8_t)pkt->path_len);
     } else if (from.type == ADV_TYPE_ROOM) {
       // A room carries many guests, so prefix the post with its author so the UI
       // can attribute each line. The signed message's `extra` holds the sender's
@@ -560,7 +560,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
       } else {
         snprintf(labeled, sizeof(labeled), "%s", text);
       }
-      _ui->addDMMsg(from.id.pub_key, false, labeled, sender_timestamp);
+      _ui->addDMMsg(from.id.pub_key, false, labeled, sender_timestamp, 0, 0, 0, pkt->path, (uint8_t)pkt->path_len);
     }
   }
 #endif
@@ -589,9 +589,20 @@ bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
       if (!s.pending || s.len != packet->payload_len) continue;
       if (!hashed) { packet->calculatePacketHash(h); hashed = true; }
       if (memcmp(h, s.hash, MAX_HASH_SIZE) == 0) {
-        s.pending = false;
-        _relay_active--;
-        if (_ui) _ui->onChannelRelayed(s.seq);
+        // Slot stays pending (freed only by the deadline sweep elsewhere) so a
+        // DIFFERENT repeater's independent echo of this same send can still
+        // match here too -- onChannelRelayed()/markChannelRelayed() append each
+        // additionally heard repeater instead of just flipping a single flag.
+        if (_ui) {
+          uint8_t hash_size = packet->getPathHashSize();
+          uint8_t hop_count = packet->getPathHashCount();
+          // The repeater we just heard directly is always the LAST hop appended
+          // (Mesh.cpp appends its own hash on every retransmit) -- that's the
+          // one within our own earshot, regardless of how many further hops
+          // this same packet may go on to take beyond it.
+          const uint8_t* repeater_hash = hop_count > 0 ? &packet->path[(hop_count - 1) * hash_size] : nullptr;
+          _ui->onChannelRelayed(s.seq, repeater_hash, repeater_hash ? hash_size : 0);
+        }
         break;
       }
     }
@@ -845,7 +856,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
     _serial->writeFrame(frame, 1);
   }
 #ifdef DISPLAY_CLASS
-  if (_ui) _ui->addChannelMsg(channel_idx, text, timestamp);
+  if (_ui) _ui->addChannelMsg(channel_idx, text, timestamp, pkt->path, (uint8_t)pkt->path_len);
   if (_ui) _ui->notify(UIEventType::channelMessage);
   const char *channel_name = "Unknown";
   ChannelDetails channel_details;

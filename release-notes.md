@@ -1,3 +1,17 @@
+## MeshCore Solo Companion Firmware v1.27
+
+### What's new
+
+- **Long names and labels scroll into view when selected instead of staying stuck behind an ellipsis.** Any selected row that would otherwise truncate — contacts, channels, messages, settings values, and more — now pauses, scrolls to reveal the full text, then swings back to the start and repeats, for as long as it stays selected; unselected rows keep the plain static ellipsis. E-ink gets its own slower cadence to suit the panel.
+- **Messages sent from the phone app now show up in the device's own chat history**, not just on the phone — open a DM, room, or channel on the device and a message you just sent from the app is right there, with the same delivery-confirmation markers (pending/delivered for DMs, pending/relayed for channels) a message composed on the device itself gets.
+- **"Path" / "Relayed by" — see which repeaters actually carried a message.** Hold Enter on a message (list or fullscreen) and, when the data is available, the Options menu gains a new row: **Path (N hops)** on a received message lists the repeaters it actually travelled through, in order; **Relayed by (N)** on your own channel post lists every distinct repeater heard echoing it back into the mesh. Each hop resolves to a contact's name where known, or a short hex tag otherwise.
+
+### Fixes
+
+- **Bluetooth connect/disconnect/reconnect cycles (e.g. a phone drifting in and out of range) could make the device nearly unresponsive for a few seconds at a time**, including briefly after turning BLE off. A failed BLE notify was retried on a fixed short interval, repeatedly hitting a blocking wait deep in the BLE stack while the link stayed marginal. Failed sends now back off exponentially (capped at 2s) instead of hammering the same blocking call.
+
+---
+
 ## MeshCore Solo Companion Firmware v1.26
 
 ### What's new
