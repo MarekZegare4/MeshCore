@@ -386,7 +386,8 @@ public:
   bool isMelodyPlaying();
   void showAlert(const char* text, int duration_millis);
   int  addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp = 0,
-                     const uint8_t* path = nullptr, uint8_t path_len = 0) override;
+                     const uint8_t* path = nullptr, uint8_t path_len = 0,
+                     bool own_message = false) override;
   void armChannelRelay(int pos, uint32_t seq) override;
   void addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text, uint32_t sender_timestamp = 0,
                uint32_t ack_tag = 0, uint32_t ack_deadline_ms = 0, uint8_t resends = 0,

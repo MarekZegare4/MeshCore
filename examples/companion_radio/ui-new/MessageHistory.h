@@ -101,8 +101,15 @@ public:
   // path/path_len_packed: the hop path this incoming post actually took (from
   // the received mesh::Packet), or nullptr/0 when not known (e.g. this is our
   // own outgoing post, before any relay echo has arrived).
+  // own_message: this is our own post (e.g. mirrored from an app-originated
+  // send) -- never counted unread, regardless of `viewing`. An on-device
+  // compose already forces `viewing` true itself (it's necessarily looking at
+  // the channel it just sent to), so this only matters for a send the device's
+  // own UI wasn't necessarily showing at the time -- otherwise our own sent
+  // message could bump the very badge it's supposed to leave alone.
   int addChannelMsg(uint8_t ch_idx, const char* text, bool viewing, uint32_t timestamp = 0,
-                     const uint8_t* path = nullptr, uint8_t path_len_packed = 0) {
+                     const uint8_t* path = nullptr, uint8_t path_len_packed = 0,
+                     bool own_message = false) {
     // Guard against bogus channel indices (e.g. findChannelIdx() returned -1
     // and was cast to uint8_t → 255). Storing such an entry would burn a ring
     // slot for a message that no visible channel can ever surface.
@@ -135,7 +142,7 @@ public:
     if (path && path_len_packed) capturePath(_hist[pos].path_len, _hist[pos].path, path, path_len_packed);
     else _hist[pos].path_len = 0;
 
-    if (!viewing && _ch_unread[ch_idx] < 99) _ch_unread[ch_idx]++;
+    if (!viewing && !own_message && _ch_unread[ch_idx] < 99) _ch_unread[ch_idx]++;
     return pos;
   }
 

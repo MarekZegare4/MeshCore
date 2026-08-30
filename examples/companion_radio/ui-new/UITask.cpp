@@ -1767,9 +1767,9 @@ int UITask::getRecentDMContacts(uint8_t out[][NodePrefs::FAVOURITE_PREFIX_LEN], 
 }
 
 int UITask::addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp,
-                          const uint8_t* path, uint8_t path_len) {
+                          const uint8_t* path, uint8_t path_len, bool own_message) {
   _last_notif_ch_idx = (int)channel_idx;
-  return ((MessagesScreen*)messages_screen)->addChannelMsg(channel_idx, text, timestamp, path, path_len);
+  return ((MessagesScreen*)messages_screen)->addChannelMsg(channel_idx, text, timestamp, path, path_len, own_message);
 }
 
 void UITask::armChannelRelay(int pos, uint32_t seq) {

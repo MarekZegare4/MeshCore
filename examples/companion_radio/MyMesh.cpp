@@ -2033,7 +2033,11 @@ void MyMesh::handleCmdFrame(size_t len) {
           int tlen = len - i;
           if (tlen > MAX_TEXT_LEN) tlen = MAX_TEXT_LEN;
           snprintf(entry, sizeof(entry), "Me: %.*s", tlen, text);
-          int pos = _ui->addChannelMsg(channel_idx, entry, msg_timestamp);
+          // own_message=true: this is our own post, so it must never bump the
+          // channel's unread badge even though the device's own UI isn't
+          // necessarily showing this channel right now (unlike an on-device
+          // compose, which is always looking at the channel it just sent to).
+          int pos = _ui->addChannelMsg(channel_idx, entry, msg_timestamp, nullptr, 0, true);
           // Same "relayed into mesh" marker an on-device channel send arms (see
           // MessagesScreen::afterSend): sendGroupMessage above already went
           // through sendFloodScoped(GroupChannel&, ...), which calls

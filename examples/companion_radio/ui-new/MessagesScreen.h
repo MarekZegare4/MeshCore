@@ -735,9 +735,10 @@ public:
   // (a phase-machine fact the store can't see) and returns the ring position so
   // the outgoing path can attach a relay seq to that exact entry.
   int addChannelMsg(uint8_t ch_idx, const char* text, uint32_t timestamp = 0,
-                    const uint8_t* path = nullptr, uint8_t path_len = 0) {
+                    const uint8_t* path = nullptr, uint8_t path_len = 0,
+                    bool own_message = false) {
     bool viewing = (_phase == CHANNEL_HIST && _sel_channel_idx == (int)ch_idx);
-    int pos = _history.addChannelMsg(ch_idx, text, viewing, timestamp, path, path_len);
+    int pos = _history.addChannelMsg(ch_idx, text, viewing, timestamp, path, path_len, own_message);
     // Ring entries are numbered newest-first (0 == newest), so a new insert
     // shifts every older message's index up by one. If the user has scrolled
     // up to an older message (_hist_sel > 0), re-point the selection at that

@@ -95,9 +95,12 @@ public:
   // that instead of assuming a valid position. path/path_len (packed
   // (hash_size-1)<<6|hop_count, same as mesh::Packet::path_len) is the hop
   // route this incoming post actually took -- nullptr/0 when not known (e.g.
-  // this is our own outgoing post).
+  // this is our own outgoing post). own_message: our own post (e.g. mirrored
+  // from an app-originated send) -- never counted unread, unlike a genuinely
+  // incoming post the device's own UI doesn't happen to be showing right now.
   virtual int addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp = 0,
-                            const uint8_t* path = nullptr, uint8_t path_len = 0) { return -1; }
+                            const uint8_t* path = nullptr, uint8_t path_len = 0,
+                            bool own_message = false) { return -1; }
   // Arms the "relayed into mesh" tracker (a heard repeater rebroadcast) on the
   // entry at ring position pos, e.g. right after addChannelMsg for a channel
   // send this device just originated. seq: MyMesh::lastChannelRelaySeq().
