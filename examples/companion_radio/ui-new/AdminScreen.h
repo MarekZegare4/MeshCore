@@ -514,6 +514,7 @@ public:
       }
       tabbar::draw(display, TAB_LABELS, ATAB_COUNT, _tab);
       int n = ROWS_PER_TAB[_tab];
+      int mq_delay = 0;
       drawList(display, n, _row_sel, _row_scroll, [&](int i, int y, bool sel, int reserve) {
         drawRowSelection(display, y, sel, reserve);
         const AdminField& f = fieldAt(_tab, i);
@@ -523,7 +524,8 @@ public:
         // the value being edited -- only rows without an inline value get the
         // full row width.
         int label_max = show_val ? display.valCol() - 4 : display.width() - 4 - reserve;
-        display.drawTextEllipsized(2, y, label_max, f.label);
+        int r = display.drawTextEllipsized(2, y, label_max, f.label, sel);
+        if (sel && r > 0) mq_delay = r;
         if (show_val) {
           if (f.kind == FK_RADIO_FREQ) {
             // valCol() reserves exactly the 8-char width this editor draws (4
@@ -540,7 +542,8 @@ public:
         }
       });
       if (_confirm.active) { _confirm.render(display); return 50; }
-      return _value_editing ? 50 : 2000;
+      if (_value_editing) return 50;
+      return (mq_delay > 0 && mq_delay < 2000) ? mq_delay : 2000;
     }
 
     // REPLY

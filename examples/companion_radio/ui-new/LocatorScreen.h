@@ -108,12 +108,13 @@ public:
   int render(DisplayDriver& display) override {
     display.setTextSize(1);
     display.setColor(DisplayDriver::LIGHT);
-    if (_picking) { renderPicker(display); return 400; }
+    if (_picking) { int mq = renderPicker(display); return (mq > 0 && mq < 400) ? mq : 400; }
     display.drawCenteredHeader("LOCATOR");
 
     const int rc = visibleRows();
     if (_sel >= rc) _sel = rc - 1;   // beeper row may have just been hidden
     const int valx = display.width() / 2 + 6;
+    int mq_delay = 0;
     drawList(display, rc, _sel, _scroll, [&](int i, int y, bool sel, int reserve) {
       Row r = rows(i);
       drawRowSelection(display, y, sel, reserve);
@@ -121,9 +122,12 @@ public:
       display.print(r.label);
       char val[24];
       valueLabel(r.kind, val, sizeof(val));
-      if (val[0]) display.drawTextEllipsized(valx, y, display.width() - valx - reserve, val);
+      if (val[0]) {
+        int mqr = display.drawTextEllipsized(valx, y, display.width() - valx - reserve, val, sel);
+        if (sel && mqr > 0) mq_delay = mqr;
+      }
     });
-    return 500;
+    return (mq_delay > 0 && mq_delay < 500) ? mq_delay : 500;
   }
 
   void moveSel(int dir) { int rc = visibleRows(); _sel = (_sel + dir + rc) % rc; }
@@ -261,9 +265,12 @@ public:
     _picking = true;
   }
 
-  void renderPicker(DisplayDriver& display) {
+  // Returns 0, or the ms until the selected row should next redraw to keep a
+  // marquee animation going (see DisplayDriver::drawTextEllipsized).
+  int renderPicker(DisplayDriver& display) {
     display.drawCenteredHeader("PICK TARGET");
     uint32_t now = rtc_clock.getCurrentTime();
+    int mq_delay = 0;
     drawList(display, _target_n, _pick_sel, _pick_scroll, [&](int i, int y, bool sel, int reserve) {
       drawRowSelection(display, y, sel, reserve);
       const Target& t = _targets[i];
@@ -279,8 +286,10 @@ public:
       } else {
         snprintf(row, sizeof(row), "@%s", t.name);          // favourite, no position known yet
       }
-      display.drawTextEllipsized(2, y, display.width() - 2 - reserve, row);
+      int mqr = display.drawTextEllipsized(2, y, display.width() - 2 - reserve, row, sel);
+      if (sel && mqr > 0) mq_delay = mqr;
     });
+    return mq_delay;
   }
 
   bool handleInput(char c) override {

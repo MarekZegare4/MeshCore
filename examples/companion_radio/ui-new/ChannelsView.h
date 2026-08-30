@@ -188,6 +188,7 @@ public:
 
     if (_mode == ADD_HASHTAG) {
       display.drawCenteredHeader("ADD CHANNEL");
+      int mq_delay = 0;
       for (int i = 0; i < 2; i++) {
         int y = top + i * step;
         bool sel = (i == _sel);
@@ -195,13 +196,15 @@ public:
         char row[40];
         if (i == 0) snprintf(row, sizeof(row), "Topic: %s", _topic[0] ? _topic : "(none)");
         else        snprintf(row, sizeof(row), "[Save]");
-        display.drawTextEllipsized(2, y, display.width() - 4, row);
+        int r = display.drawTextEllipsized(2, y, display.width() - 4, row, sel);
+        if (sel && r > 0) mq_delay = r;
         display.setColor(DisplayDriver::LIGHT);
       }
-      return 1000;
+      return (mq_delay > 0 && mq_delay < 1000) ? mq_delay : 1000;
     }
 
     display.drawCenteredHeader(_mode == ADD ? "ADD CHANNEL" : "EDIT CHANNEL");
+    int mq_delay = 0;
     for (int i = 0; i < 3; i++) {
       int y = top + i * step;
       bool sel = (i == _sel);
@@ -213,10 +216,11 @@ public:
       else             snprintf(row, sizeof(row), "[Save]");
       // Ellipsize rather than print() directly -- a long name/secret must not
       // wrap onto the next row's line (print() wraps by default).
-      display.drawTextEllipsized(2, y, display.width() - 4, row);
+      int r = display.drawTextEllipsized(2, y, display.width() - 4, row, sel);
+      if (sel && r > 0) mq_delay = r;
       display.setColor(DisplayDriver::LIGHT);
     }
-    return 1000;
+    return (mq_delay > 0 && mq_delay < 1000) ? mq_delay : 1000;
   }
 
   bool handleInput(char c) {

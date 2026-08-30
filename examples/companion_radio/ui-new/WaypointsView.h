@@ -190,7 +190,10 @@ class WaypointsView {
     display.setCursor(2, top + 2 * step); display.print("Cancel to abort");
   }
 
-  void renderWpList(DisplayDriver& display) {
+  // Returns 0, or the ms until the selected row's name should next redraw to
+  // keep a marquee animation going (see DisplayDriver::drawTextEllipsized).
+  int renderWpList(DisplayDriver& display) {
+    int mq_delay = 0;
     display.setColor(DisplayDriver::LIGHT);
     char title[24];
     snprintf(title, sizeof(title), "WAYPOINTS %d/%d",
@@ -219,10 +222,12 @@ class WaypointsView {
       }
       char nm[24];
       display.translateUTF8ToBlocks(nm, label, sizeof(nm));
-      display.drawTextEllipsized(2, y, display.width() - 2 - bw - reserve, nm);
+      int mqr = display.drawTextEllipsized(2, y, display.width() - 2 - bw - reserve, nm, sel);
+      if (sel && mqr > 0) mq_delay = mqr;
       if (dist[0]) { display.setCursor(display.width() - bw + 1 - reserve, y); display.print(dist); }
       display.setColor(DisplayDriver::LIGHT);
     });
+    return mq_delay;
   }
 
   void renderWpNav(DisplayDriver& display) {
@@ -361,9 +366,9 @@ public:
     if (_mode == AVG) { renderAvg(display);     return display.isEink() ? 1000 : 300; }
     if (_mode == TRACKBACK) { renderTrackBack(display); return 1000; }
     if (_mode == NAV) { renderWpNav(display);   return 1000; }
-    renderWpList(display);                          // LIST
+    int mq_delay = renderWpList(display);            // LIST
     if (_ctx.active) _ctx.render(display);
-    return 1000;
+    return (mq_delay > 0 && mq_delay < 1000) ? mq_delay : 1000;
   }
 
   // Returns true if the input was consumed (always, while active()).

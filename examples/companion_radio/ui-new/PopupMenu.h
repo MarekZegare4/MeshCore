@@ -114,7 +114,9 @@ struct PopupMenu {
       } else {
         display.setColor(DisplayDriver::LIGHT);
       }
-      display.drawTextEllipsized(bx + pad, py, text_w, _items[idx]);
+      // Return value not needed here: this popup already redraws every 50ms
+      // (below), faster than any marquee step, so the animation is already smooth.
+      display.drawTextEllipsized(bx + pad, py, text_w, _items[idx], idx == _sel);
       display.setColor(DisplayDriver::LIGHT);
     }
 

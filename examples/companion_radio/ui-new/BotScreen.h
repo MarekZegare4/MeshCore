@@ -149,6 +149,7 @@ public:
     }
 
     int n = ROWS_PER_TAB[_tab];
+    int mq_delay = 0;
     drawList(display, n, _sel, _scroll, [&](int i, int y, bool sel, int reserve) {
       Row r = tabRow(_tab, i);
       drawRowSelection(display, y, sel, reserve);
@@ -173,9 +174,10 @@ public:
           ChannelDetails ch;
           if (_num_channels == 0)
             display.print("(none)");
-          else if (the_mesh.getChannel(_prefs->bot_channel_idx, ch) && ch.name[0])
-            display.drawTextEllipsized(val_x, y, display.width() - val_x - 1 - reserve, ch.name);
-          else
+          else if (the_mesh.getChannel(_prefs->bot_channel_idx, ch) && ch.name[0]) {
+            int mqr = display.drawTextEllipsized(val_x, y, display.width() - val_x - 1 - reserve, ch.name, sel);
+            if (sel && mqr > 0) mq_delay = mqr;
+          } else
             display.print("?");
           break;
         }
@@ -184,9 +186,10 @@ public:
             display.print("(none)");
           } else {
             ContactInfo* c = the_mesh.lookupContactByPubKey(_prefs->bot_room_prefix, NodePrefs::FAVOURITE_PREFIX_LEN);
-            if (c && c->name[0])
-              display.drawTextEllipsized(val_x, y, display.width() - val_x - 1 - reserve, c->name);
-            else
+            if (c && c->name[0]) {
+              int mqr = display.drawTextEllipsized(val_x, y, display.width() - val_x - 1 - reserve, c->name, sel);
+              if (sel && mqr > 0) mq_delay = mqr;
+            } else
               display.print("?");
           }
           break;
@@ -200,7 +203,8 @@ public:
           const char* shown = !tr[0] ? "(none)"
                             : (tr[0] == '*' && !tr[1]) ? "(any msg)"   // wildcard / away mode
                                                        : tr;
-          display.drawTextEllipsized(val_x, y, display.width() - val_x - 1 - reserve, shown);
+          int mqr = display.drawTextEllipsized(val_x, y, display.width() - val_x - 1 - reserve, shown, sel);
+          if (sel && mqr > 0) mq_delay = mqr;
           break;
         }
         case REPLY_DM:
@@ -209,7 +213,8 @@ public:
           const char* rp = (r.kind == REPLY_DM) ? _prefs->bot_reply_dm
                           : (r.kind == REPLY_CH) ? _prefs->bot_reply_ch
                                                  : _prefs->bot_reply_room;
-          display.drawTextEllipsized(val_x, y, display.width() - val_x - 1 - reserve, rp[0] ? rp : "(none)");
+          int mqr = display.drawTextEllipsized(val_x, y, display.width() - val_x - 1 - reserve, rp[0] ? rp : "(none)", sel);
+          if (sel && mqr > 0) mq_delay = mqr;
           break;
         }
         case COMMANDS_DM:

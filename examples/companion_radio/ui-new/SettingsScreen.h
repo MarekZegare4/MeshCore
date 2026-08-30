@@ -440,8 +440,11 @@ class SettingsScreen : public UIScreen {
     return item - MSG_SLOT_0;
   }
 
-  void renderItem(DisplayDriver& display, int item, int y, bool sel) {
+  // Returns 0, or the ms until the selected row's value should next redraw
+  // to keep a marquee animation going (see DisplayDriver::drawTextEllipsized).
+  int renderItem(DisplayDriver& display, int item, int y, bool sel) {
     NodePrefs* p = _task->getNodePrefs();
+    int mq_delay = 0;
 
     drawRowSelection(display, y, sel, _reserve);
 
@@ -514,7 +517,8 @@ class SettingsScreen : public UIScreen {
       display.print("Preset");
       const char* name = p ? _picker.currentName(p, radioTarget(p)) : "Custom";
       int xc = valCol(display);
-      display.drawTextEllipsized(xc, y, display.width() - xc - _reserve, name);
+      int r = display.drawTextEllipsized(xc, y, display.width() - xc - _reserve, name, sel);
+      if (sel && r > 0) mq_delay = r;
     } else if (item == CUSTOM_FREQ) {
       display.print("Freq");
       int xc = valCol(display);
@@ -559,8 +563,9 @@ class SettingsScreen : public UIScreen {
     } else if (item == SCOPE_NAME) {
       display.print("Scope");
       int vx = valCol(display);
-      display.drawTextEllipsized(vx, y, display.width() - vx - _reserve,
-                                  (p && p->default_scope_name[0]) ? p->default_scope_name : "(none)");
+      int r = display.drawTextEllipsized(vx, y, display.width() - vx - _reserve,
+                                  (p && p->default_scope_name[0]) ? p->default_scope_name : "(none)", sel);
+      if (sel && r > 0) mq_delay = r;
 #if AUTO_OFF_MILLIS > 0
     } else if (item == AUTO_OFF) {
       display.print("AutoOff");
@@ -596,7 +601,8 @@ class SettingsScreen : public UIScreen {
     } else if (item == DEVICE_NAME) {
       display.print("Name");
       int vx = valCol(display);
-      display.drawTextEllipsized(vx, y, display.width() - vx - _reserve, the_mesh.getNodeName());
+      int r = display.drawTextEllipsized(vx, y, display.width() - vx - _reserve, the_mesh.getNodeName(), sel);
+      if (sel && r > 0) mq_delay = r;
     } else if (item == REBOOT) {
       display.print("Reboot");   // action row: Enter reboots this device
     } else if (item == KEYBOARD_TYPE) {
@@ -677,8 +683,10 @@ class SettingsScreen : public UIScreen {
       display.print(label);
       const char* tmpl = (p && p->custom_msgs[slot][0]) ? p->custom_msgs[slot] : "(empty)";
       int xm = 8 + display.getCharWidth() * 4;
-      display.drawTextEllipsized(xm, y, display.width() - xm - _reserve, tmpl);
+      int r = display.drawTextEllipsized(xm, y, display.width() - xm - _reserve, tmpl, sel);
+      if (sel && r > 0) mq_delay = r;
     }
+    return mq_delay;
   }
 
   // Keyboard state for editing message slots
@@ -722,6 +730,7 @@ public:
 
     display.drawCenteredHeader("SETTINGS");
 
+    int mq_delay = 0;
     _acc.render(display,
       // Section header: "[+/-] Name"
       [&](int sec, int y, bool sel, int reserve, bool collapsed) {
@@ -736,12 +745,13 @@ public:
       // Item row
       [&](int sec, int item, int y, bool sel, int reserve) {
         _reserve = reserve;
-        renderItem(display, _sec_items[sec][item], y, sel);
+        int r = renderItem(display, _sec_items[sec][item], y, sel);
+        if (r > 0) mq_delay = r;
       });
 
     if (_picker.menu.active) _picker.menu.render(display);
 
-    return 2000;
+    return (mq_delay > 0 && mq_delay < 2000) ? mq_delay : 2000;
   }
 
   bool handleInput(char c) override {

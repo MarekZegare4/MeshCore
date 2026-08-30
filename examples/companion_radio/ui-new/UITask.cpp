@@ -718,6 +718,7 @@ public:
 
   int render(DisplayDriver& display) override {
     char tmp[80];
+    int mq_delay = 0;   // >0 while a selected row's name is marquee-scrolling
     display.setTextSize(1);
     const int lh      = display.getLineHeight();  // line height at sz1
     const int step    = display.lineStep();        // lh + 2
@@ -1198,7 +1199,8 @@ public:
           int name_y     = cy + (cell_h - line_h) / 2;
           int name_max_w = cell_w - 4 - bw;
           if (name_max_w < 6) name_max_w = 6;
-          display.drawTextEllipsized(cx + 2, name_y, name_max_w, name);
+          int r = display.drawTextEllipsized(cx + 2, name_y, name_max_w, name, sel);
+          if (sel && r > 0) mq_delay = r;
           if (unread > 0)
             display.drawUnreadBadge(cx + cell_w - 2, name_y, unread, sel);
         } else {
@@ -1244,13 +1246,15 @@ public:
                        (auto_adv || _task->trail().isActive() || repeating || loc_sharing);
     if (Features::IS_EINK) {
       // slow display: poll every 30 s; inbound msgs force immediate refresh via notify()
-      return Features::HOME_REFRESH_MS;
+      return (mq_delay > 0 && mq_delay < Features::HOME_REFRESH_MS) ? mq_delay : Features::HOME_REFRESH_MS;
     }
     if (_page == HomePage::CLOCK) {
       bool show_sec = !_node_prefs || !_node_prefs->clock_hide_seconds;
-      return need_blink ? 1000 : (show_sec ? 1000 : 60000);
+      int ret = need_blink ? 1000 : (show_sec ? 1000 : 60000);
+      return (mq_delay > 0 && mq_delay < ret) ? mq_delay : ret;
     }
-    return need_blink ? 1000 : 5000;
+    int ret = need_blink ? 1000 : 5000;
+    return (mq_delay > 0 && mq_delay < ret) ? mq_delay : ret;
   }
 
   bool handleInput(char c) override {

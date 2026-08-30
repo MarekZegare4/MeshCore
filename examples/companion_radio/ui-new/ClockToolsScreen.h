@@ -166,19 +166,22 @@ class ClockToolsScreen : public UIScreen {
     const char* rows[3] = { "Time", "Repeat", "Armed" };
     if (_sel > 2) _sel = 2;
     const int valx = d.width() / 2 + 6;
+    int mq_delay = 0;
     drawList(d, 3, _sel, _scroll, [&](int i, int y, bool sel, int reserve) {
       drawRowSelection(d, y, sel, reserve);
       d.setCursor(4, y); d.print(rows[i]);
       if (i == 0) {
         drawAlarmTime(d, y, valx, sel && _alarm_editing);
       } else if (i == 1) {
-        d.drawTextEllipsized(valx, y, d.width() - valx - reserve,
-                             NodePrefs::alarmRepeatLabel(NodePrefs::alarmRepeatIdxForMask(_prefs->alarm_repeat_mask)));
+        int mqr = d.drawTextEllipsized(valx, y, d.width() - valx - reserve,
+                             NodePrefs::alarmRepeatLabel(NodePrefs::alarmRepeatIdxForMask(_prefs->alarm_repeat_mask)), sel);
+        if (sel && mqr > 0) mq_delay = mqr;
       } else {
         d.drawTextEllipsized(valx, y, d.width() - valx - reserve, _prefs->alarm_on ? "ON" : "OFF");
       }
     });
-    return _alarm_editing ? 50 : 60000;
+    if (_alarm_editing) return 50;
+    return (mq_delay > 0 && mq_delay < 60000) ? mq_delay : 60000;
   }
 
   int renderTimer(DisplayDriver& d) {

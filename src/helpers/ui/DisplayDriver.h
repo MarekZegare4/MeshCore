@@ -2,12 +2,24 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <Arduino.h>
 
 class DisplayDriver {
   int _w, _h;
 protected:
   bool _vw_dirty = true;
   bool _vw_result = false;
+
+  // ---- Marquee state for the single currently-selected overflowing label ----
+  // Only one row/label can be "selected" at a time across the whole UI, so one
+  // slot of state (rather than per-caller) is enough, and keeps every call
+  // site down to passing a bool.
+  char _marquee_text[64] = {0};
+  int _marquee_max_w = -1;
+  uint16_t _marquee_skip_cp = 0;
+  uint16_t _marquee_max_skip_cp = 0;
+  uint8_t _marquee_phase = 0;   // 0=hold@start 1=scroll fwd 2=hold@end 3=scroll back
+  unsigned long _marquee_next_at = 0;
   DisplayDriver(int w, int h) { _w = w; _h = h; }
   void setDimensions(int w, int h) { _w = w; _h = h; }
 public:
@@ -320,8 +332,24 @@ public:
   }
 
 
-  // draw text with ellipsis if it exceeds max_width
-  virtual void drawTextEllipsized(int x, int y, int max_width, const char* str) {
+  // Marquee timing — e-ink gets slower, coarser steps (fewer, cheaper partial
+  // refreshes; a fine pixel/char scroll would be both slow and prone to
+  // ghosting there). Unchanged frames are skipped by the display's own CRC
+  // diff before any real panel push happens, so the hold phases are free.
+  virtual unsigned long marqueeStepMs()    { return isEink() ? 900 : 220; }
+  virtual unsigned long marqueeHoldMs()    { return isEink() ? 2500 : 1500; }
+  virtual uint8_t       marqueeStepChars() { return isEink() ? 3 : 1; }
+
+  // draw text with ellipsis if it exceeds max_width. Pass selected=true for
+  // the row currently highlighted/focused by the user: instead of a static
+  // ellipsis, an overflowing label then animates a "swing" marquee — holds at
+  // the start, scrolls to reveal the full tail, holds there, scrolls back to
+  // the start, and repeats for as long as the caller keeps passing
+  // selected=true for this same text.
+  // Returns 0 if nothing is animating (the caller's normal redraw cadence is
+  // fine), or the number of ms until the next animation step is due — screens
+  // clamp their render() return value to this so the marquee stays smooth.
+  virtual int drawTextEllipsized(int x, int y, int max_width, const char* str, bool selected = false) {
     char temp_str[256];  // reasonable buffer size
     translateUTF8ToBlocks(temp_str, str, sizeof(temp_str));
 
@@ -333,40 +361,120 @@ public:
     // measures the same, so the width/ellipsis maths below is unaffected.
     for (char* q = temp_str; *q; q++) if (*q == '\n' || *q == '\r') *q = ' ';
 
-    if (getTextWidth(temp_str) <= max_width) {
+    int full_width = getTextWidth(temp_str);
+    if (full_width <= max_width) {
       setCursor(x, y);
       print(temp_str);
-      return;
+      return 0;
     }
-    
-    // for variable-width fonts (GxEPD), add space after ellipsis
-    // for fixed-width fonts (OLED), keep tight spacing to save precious characters
-    const char* ellipsis;
-    // use a simple heuristic: if 'i' and 'l' have different widths, it's variable-width
-    if (_vw_dirty) {
-      _vw_result = (getTextWidth("i") != getTextWidth("l"));
-      _vw_dirty = false;
+
+    if (!selected) {
+      // for variable-width fonts (GxEPD), add space after ellipsis
+      // for fixed-width fonts (OLED), keep tight spacing to save precious characters
+      const char* ellipsis;
+      // use a simple heuristic: if 'i' and 'l' have different widths, it's variable-width
+      if (_vw_dirty) {
+        _vw_result = (getTextWidth("i") != getTextWidth("l"));
+        _vw_dirty = false;
+      }
+      if (_vw_result) {
+        ellipsis = "... ";  // variable-width fonts: add space
+      } else {
+        ellipsis = "...";   // fixed-width fonts: no space
+      }
+
+      int ellipsis_width = getTextWidth(ellipsis);
+      int str_len = strlen(temp_str);
+
+      while (str_len > 0 && getTextWidth(temp_str) > max_width - ellipsis_width) {
+        temp_str[--str_len] = 0;
+      }
+      // Strip orphaned UTF-8 leading byte left by byte-at-a-time trimming above.
+      while (str_len > 0 && ((uint8_t)temp_str[str_len - 1] & 0xC0) == 0xC0) {
+        temp_str[--str_len] = 0;
+      }
+      strcat(temp_str, ellipsis);
+
+      setCursor(x, y);
+      print(temp_str);
+      return 0;
     }
-    if (_vw_result) {
-      ellipsis = "... ";  // variable-width fonts: add space
-    } else {
-      ellipsis = "...";   // fixed-width fonts: no space
+
+    // ---- marquee (selected + overflowing) ----
+    unsigned long now = millis();
+    bool is_new = (strcmp(temp_str, _marquee_text) != 0) || (max_width != _marquee_max_w);
+    if (is_new) {
+      strncpy(_marquee_text, temp_str, sizeof(_marquee_text) - 1);
+      _marquee_text[sizeof(_marquee_text) - 1] = 0;
+      _marquee_max_w = max_width;
+      _marquee_skip_cp = 0;
+      _marquee_phase = 0;  // hold at start
+      _marquee_next_at = now + marqueeHoldMs();
+
+      // Find the codepoint skip at which the remaining suffix's own width
+      // already fits max_width — i.e. the fully-scrolled end position.
+      const uint8_t* p = (const uint8_t*)temp_str;
+      int removed_w = 0;
+      uint16_t cp_count = 0;
+      while (*p) {
+        uint32_t cp = decodeCodepoint(p);
+        removed_w += getCodepointWidth(cp);
+        cp_count++;
+        if (full_width - removed_w <= max_width) break;
+      }
+      _marquee_max_skip_cp = cp_count;
     }
-    
-    int ellipsis_width = getTextWidth(ellipsis);
-    int str_len = strlen(temp_str);
-    
-    while (str_len > 0 && getTextWidth(temp_str) > max_width - ellipsis_width) {
-      temp_str[--str_len] = 0;
+
+    // Advance the state machine at most once per elapsed step/hold interval.
+    if ((int32_t)(now - _marquee_next_at) >= 0) {
+      uint8_t step = marqueeStepChars();
+      switch (_marquee_phase) {
+        case 0:  // was holding at start -> begin scrolling forward
+        case 1:  // scrolling forward
+          _marquee_skip_cp += step;
+          _marquee_phase = 1;
+          if (_marquee_skip_cp >= _marquee_max_skip_cp) {
+            _marquee_skip_cp = _marquee_max_skip_cp;
+            _marquee_phase = 2;
+            _marquee_next_at = now + marqueeHoldMs();
+          } else {
+            _marquee_next_at = now + marqueeStepMs();
+          }
+          break;
+        case 2:  // was holding at end -> begin scrolling back
+        case 3:  // scrolling back
+          _marquee_phase = 3;
+          if (_marquee_skip_cp <= step) {
+            _marquee_skip_cp = 0;
+            _marquee_phase = 0;
+            _marquee_next_at = now + marqueeHoldMs();
+          } else {
+            _marquee_skip_cp -= step;
+            _marquee_next_at = now + marqueeStepMs();
+          }
+          break;
+      }
     }
-    // Strip orphaned UTF-8 leading byte left by byte-at-a-time trimming above.
-    while (str_len > 0 && ((uint8_t)temp_str[str_len - 1] & 0xC0) == 0xC0) {
-      temp_str[--str_len] = 0;
+
+    // Render the window starting _marquee_skip_cp codepoints in, trimmed from
+    // the tail (same technique as the static ellipsis path, minus the "..."
+    // suffix) until it fits max_width.
+    const uint8_t* p = (const uint8_t*)temp_str;
+    for (uint16_t i = 0; i < _marquee_skip_cp && *p; i++) decodeCodepoint(p);
+    char window[256];
+    strncpy(window, (const char*)p, sizeof(window) - 1);
+    window[sizeof(window) - 1] = 0;
+    int wlen = strlen(window);
+    while (wlen > 0 && getTextWidth(window) > max_width) {
+      window[--wlen] = 0;
     }
-    strcat(temp_str, ellipsis);
-    
+    while (wlen > 0 && ((uint8_t)window[wlen - 1] & 0xC0) == 0xC0) {
+      window[--wlen] = 0;
+    }
     setCursor(x, y);
-    print(temp_str);
+    print(window);
+
+    return (int)(_marquee_next_at > now ? (_marquee_next_at - now) : 1);
   }
   
   virtual void setBrightness(uint8_t level) { }  // level 0-4 (min to max), no-op default

@@ -771,6 +771,7 @@ public:
 
   int render(DisplayDriver& display) override {
     display.setTextSize(1);
+    int mq_delay = 0;   // >0 while the selected row's name is marquee-scrolling
 
     // Periodic refresh of the selected entry while in detail or navigate view,
     // preserving the selection across the list rebuild. Navigate refreshes
@@ -876,7 +877,8 @@ public:
         if (_source == SRC_SCAN && !e.name[0]) {  // unknown node → "[Type]"
           snprintf(filt, sizeof(filt), "[%s]", typeName(e.type));
         }
-        display.drawTextEllipsized(tx, y, dist_col - tx - 2, filt);
+        int mqr = display.drawTextEllipsized(tx, y, dist_col - tx - 2, filt, sel);
+        if (sel && mqr > 0) mq_delay = mqr;
 
         display.setColor(sel ? DisplayDriver::DARK : DisplayDriver::LIGHT);
         char right[10];
@@ -894,8 +896,10 @@ public:
     }
 
     if (renderActivePopup(display)) return 50;
-    if (_source == SRC_SCAN) return _scanning ? 200 : 2000;
-    return _count == 0 ? 3000 : 2000;
+    int ret;
+    if (_source == SRC_SCAN) ret = _scanning ? 200 : 2000;
+    else ret = _count == 0 ? 3000 : 2000;
+    return (mq_delay > 0 && mq_delay < ret) ? mq_delay : ret;
   }
 
   bool handleInput(char c) override {

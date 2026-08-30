@@ -90,6 +90,7 @@ public:
     display.drawCenteredHeader("LIVE SHARE");
 
     const int valx = display.width() / 2 + 6;
+    int mq_delay = 0;
     drawList(display, ROW_COUNT, _sel, _scroll, [&](int i, int y, bool sel, int reserve) {
       Row r = rows(i);
       drawRowSelection(display, y, sel, reserve);
@@ -97,9 +98,12 @@ public:
       display.print(r.label);
       char val[24];
       valueLabel(r.kind, val, sizeof(val));
-      if (val[0]) display.drawTextEllipsized(valx, y, display.width() - valx - reserve, val);
+      if (val[0]) {
+        int mqr = display.drawTextEllipsized(valx, y, display.width() - valx - reserve, val, sel);
+        if (sel && mqr > 0) mq_delay = mqr;
+      }
     });
-    return 500;
+    return (mq_delay > 0 && mq_delay < 500) ? mq_delay : 500;
   }
 
   void moveSel(int dir) { _sel = (_sel + dir + ROW_COUNT) % ROW_COUNT; }

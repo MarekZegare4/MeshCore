@@ -955,6 +955,7 @@ public:
   }
 
   int render(DisplayDriver& display) override {
+    int mq_delay = 0;   // >0 while a selected row's text is marquee-scrolling
     display.setTextSize(1);
     display.setColor(DisplayDriver::LIGHT);
 
@@ -1007,7 +1008,8 @@ public:
           display.translateUTF8ToBlocks(filtered, c.name, sizeof(filtered));
           uint8_t dm_unread = _task->getDMUnread(c.id.pub_key);
           int bw = dm_unread > 0 ? display.unreadBadgeWidth(dm_unread) + 2 : 0;
-          display.drawTextEllipsized(2, y, display.width() - 2 - bw - reserve, filtered);
+          int r = display.drawTextEllipsized(2, y, display.width() - 2 - bw - reserve, filtered, sel);
+          if (sel && r > 0) mq_delay = r;
           if (dm_unread > 0)
             display.drawUnreadBadge(display.width() - reserve, y, dm_unread, sel);
         }
@@ -1040,7 +1042,8 @@ public:
         if (the_mesh.getChannel(_channel_indices[list_idx], ch)) {
           uint8_t unread = _history.chUnread(_channel_indices[list_idx]);
           int bw = unread > 0 ? display.unreadBadgeWidth(unread) + 2 : 0;
-          display.drawTextEllipsized(2, y, display.width() - 4 - bw - reserve, ch.name);
+          int r = display.drawTextEllipsized(2, y, display.width() - 4 - bw - reserve, ch.name, sel);
+          if (sel && r > 0) mq_delay = r;
           if (unread > 0)
             display.drawUnreadBadge(display.width() - reserve, y, unread, sel);
         }
@@ -1179,6 +1182,9 @@ public:
         BubbleBox box = computeBubbleBox(full_avail, e.outgoing, header_w, body_w);
 
         drawHistRowFrame(display, box.x, box.w, y, bh, lh, sel);
+        // Only the body marquees, not the sender too: both share the single
+        // marquee slot on DisplayDriver, and if two texts in the same row both
+        // qualified they'd keep resetting each other's animation every frame.
         display.drawTextEllipsized(box.x + 3, y + 1, box.w - 6 - age_w, sender);
         if (e.outgoing) {                       // delivery marker after "Me"
           int gx = box.x + 3 + display.getTextWidth(sender) + 3;
@@ -1189,7 +1195,8 @@ public:
         if (portrait_expand) {
           for (int li = 0; li < nl; li++) { display.setCursor(box.x + 3, y + (li + 1) * lh + 1); display.print(s_wrap_lines[li]); }
         } else {
-          display.drawTextEllipsized(box.x + 3, y + lh + 1, box.w - 6, body);
+          int r_body = display.drawTextEllipsized(box.x + 3, y + lh + 1, box.w - 6, body, sel);
+          if (sel && r_body > 0) mq_delay = r_body;
         }
       }
 
@@ -1213,7 +1220,7 @@ public:
 
       drawComposeButton(display, cby, lh, _dm_hist_sel == -1);
       if (_ctx_menu.active) _ctx_menu.render(display);
-      return dm_count > 0 ? 500 : 2000;
+      { int ret = dm_count > 0 ? 500 : 2000; return (mq_delay > 0 && mq_delay < ret) ? mq_delay : ret; }
 
     } else if (_phase == CHANNEL_HIST) {
       if (_fs.active && _hist_sel >= 0) {
@@ -1354,6 +1361,7 @@ public:
         BubbleBox box = computeBubbleBox(full_avail, outgoing, header_w, body_w);
 
         drawHistRowFrame(display, box.x, box.w, y, bh, lh, sel);
+        // Only the body marquees, not the sender — see the DM history block above.
         display.drawTextEllipsized(box.x + 3, y + 1, box.w - 6 - age_w, sender);
         if (show_ack) {
           int gx = box.x + 3 + display.getTextWidth(sender) + 3;
@@ -1364,7 +1372,8 @@ public:
         if (portrait_expand) {
           for (int li = 0; li < nl; li++) { display.setCursor(box.x + 3, y + (li + 1) * lh + 1); display.print(s_wrap_lines[li]); }
         } else {
-          display.drawTextEllipsized(box.x + 3, y + lh + 1, box.w - 6, body);
+          int r_body = display.drawTextEllipsized(box.x + 3, y + lh + 1, box.w - 6, body, sel);
+          if (sel && r_body > 0) mq_delay = r_body;
         }
       }
 
@@ -1421,11 +1430,12 @@ public:
           NodePrefs* p = _task->getNodePrefs();
           int slot = _active_msgs[idx - 1];
           const char* tmpl = p ? p->custom_msgs[slot] : "";
-          display.drawTextEllipsized(2, y, display.width() - 4 - reserve, tmpl);
+          int r = display.drawTextEllipsized(2, y, display.width() - 4 - reserve, tmpl, sel);
+          if (sel && r > 0) mq_delay = r;
         }
       });
     }
-    return 2000;
+    return (mq_delay > 0 && mq_delay < 2000) ? mq_delay : 2000;
   }
 
   bool handleInput(char c) override {
