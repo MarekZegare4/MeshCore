@@ -301,6 +301,17 @@ MINI_ICON(ICON_GEAR, 7,   // ⚙ cog with hub hole — system
   packRow("#######"),
   packRow(".#####."),
   packRow("..#.#.."));
+MINI_ICON(ICON_KEY, 5,   // padlock — remote admin (privileged/password-gated access)
+  packRow(".###."),
+  packRow("#...#"),
+  packRow("#...#"),
+  packRow("#####"),
+  packRow("..#.."),
+  packRow("#####"));
+MINI_ICON(ICON_PINS, 5,   // 3-pin header — GPIO
+  packRow("#.#.#"),
+  packRow("#.#.#"),
+  packRow("#####"));
 
 // Home-carousel page glyphs — a uniform 5x5 set, deliberately smaller than the
 // menu/status icons above, used in place of the page-indicator dots. One per

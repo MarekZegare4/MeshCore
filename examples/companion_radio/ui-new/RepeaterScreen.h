@@ -74,15 +74,19 @@ class RepeaterScreen : public UIScreen {
     if (_sel < 0) _sel = 0;
   }
 
+  // Freq/SF/BW/CR match Settings > Radio's own terminology exactly -- no "Rpt "
+  // prefix needed since this whole screen is already the repeater's own
+  // profile (Settings' radio screen is a separate screen for the companion's
+  // own params), so the prefix was just noise, not disambiguation.
   static const char* itemLabel(int item) {
     switch (item) {
       case IT_REPEATER: return "Repeater";
       case IT_NETWORK:  return "Network";
-      case IT_RPRESET:  return "Rpt preset";
-      case IT_RFREQ:    return "Rpt freq";
-      case IT_RSF:      return "Rpt SF";
-      case IT_RBW:      return "Rpt BW";
-      case IT_RCR:      return "Rpt CR";
+      case IT_RPRESET:  return "Preset";
+      case IT_RFREQ:    return "Freq";
+      case IT_RSF:      return "SF";
+      case IT_RBW:      return "BW";
+      case IT_RCR:      return "CR";
       case IT_SKIP:     return "Skip advert";
       case IT_HOPS:     return "Max hops";
       case IT_YIELD:    return "Yield";

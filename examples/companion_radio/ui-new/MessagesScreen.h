@@ -1622,8 +1622,8 @@ public:
           bool left  = keyIsPrev(c);
           bool right = keyIsNext(c);
           if (left || right) {
-            static const char* NOTIF_LABELS[] = { "default", "OFF", "ON" };
-            static const char* ML[]           = { "global", "M1", "M2" };
+            static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
+            static const char* ML[]           = { "Global", "M1", "M2" };
             ContactInfo ci;
             if (the_mesh.getContactByIdx(_sorted[_contact_sel], ci)) {
               int sel = _ctx_menu.selectedIndex();
@@ -1777,12 +1777,12 @@ public:
         return true;
       }
       if (c == KEY_CONTEXT_MENU && _num_contacts > 0 && !_room_mode) {
-        static const char* NOTIF_LABELS[] = { "default", "OFF", "ON" };
+        static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
         ContactInfo ci;
         the_mesh.getContactByIdx(_sorted[_contact_sel], ci);
         snprintf(_ctx_notif_item, sizeof(_ctx_notif_item), "Notif: %s",
                  NOTIF_LABELS[dmNotifState(ci.id.pub_key)]);
-        { static const char* ML[] = { "global", "M1", "M2" };
+        { static const char* ML[] = { "Global", "M1", "M2" };
           snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s",
                    ML[dmMelodySlot(ci.id.pub_key)]); }
         int pinned_slot = _task->findFavouriteSlot(ci.id.pub_key);
@@ -1805,8 +1805,8 @@ public:
           bool left  = keyIsPrev(c);
           bool right = keyIsNext(c);
           if (left || right) {
-            static const char* NOTIF_LABELS[] = { "default", "OFF", "ON" };
-            static const char* ML[]           = { "global", "M1", "M2" };
+            static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
+            static const char* ML[]           = { "Global", "M1", "M2" };
             uint8_t ch_idx = _ctx_ch_idx;   // frozen at menu open — see declaration
             int sel = _ctx_menu.selectedIndex();
             if (sel == 1) {
@@ -1826,7 +1826,7 @@ public:
               if (p2) {
                 p2->ch_fav_bitmask ^= (1ULL << ch_idx);
                 bool is_fav = (p2->ch_fav_bitmask & (1ULL << ch_idx));
-                snprintf(_ctx_ch_fav_item, sizeof(_ctx_ch_fav_item), is_fav ? "Fav: yes" : "Fav: no");
+                snprintf(_ctx_ch_fav_item, sizeof(_ctx_ch_fav_item), is_fav ? "Fav: ON" : "Fav: OFF");
                 _ctx_dirty = true;
                 // List rebuild is deferred to menu close: with the fav-only
                 // filter on, un-favouriting this channel removes it from the
@@ -1900,15 +1900,15 @@ public:
       if (c == KEY_CONTEXT_MENU && _num_channels > 0 && _channel_sel < _num_channels) {
         uint8_t ch_idx = _channel_indices[_channel_sel];
         _ctx_ch_idx = ch_idx;   // freeze the menu's target channel
-        static const char* NOTIF_LABELS[] = { "default", "OFF", "ON" };
+        static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
         snprintf(_ctx_notif_item, sizeof(_ctx_notif_item), "Notif: %s",
                  NOTIF_LABELS[chNotifState(ch_idx)]);
-        { static const char* ML[] = { "global", "M1", "M2" };
+        { static const char* ML[] = { "Global", "M1", "M2" };
           snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s",
                    ML[chNotifMelody(ch_idx)]); }
         { NodePrefs* p2 = _task->getNodePrefs();
           bool is_fav = p2 && (p2->ch_fav_bitmask & (1ULL << ch_idx));
-          snprintf(_ctx_ch_fav_item, sizeof(_ctx_ch_fav_item), is_fav ? "Fav: yes" : "Fav: no"); }
+          snprintf(_ctx_ch_fav_item, sizeof(_ctx_ch_fav_item), is_fav ? "Fav: ON" : "Fav: OFF"); }
         _ctx_menu.begin("Channel options", 6);
         _ctx_menu.addItem("Mark all read");
         _ctx_menu.addItem(_ctx_notif_item);

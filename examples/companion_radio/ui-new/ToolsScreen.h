@@ -35,11 +35,16 @@ class ToolsScreen : public UIScreen {
   // for the widest icon (the 7px cog) at the current font scale.
   static int gutter(DisplayDriver& d) { return 7 * miniIconScale(d) + 2; }
 
+  // Was hand-rolling its own vertical centring against lineStep() (line height
+  // + the 2px inter-row gap) instead of just the line height itself -- 2px too
+  // much slack pushed a nearly-full-height icon (e.g. the 7px cog) low enough
+  // to clip against the row below, which is what "don't fit visually" meant.
+  // miniIconDraw() (icons.h) already centres correctly against getLineHeight()
+  // alone -- the same call drawAckGlyph uses for the message-list checkmark --
+  // so just delegate to it instead of keeping a second, subtly-wrong copy.
   static void drawIcon(DisplayDriver& d, int x, int y, const MiniIcon* ic) {
     if (!ic) return;
-    const int s = miniIconScale(d);
-    const int top = (y - 1) + ((d.lineStep() - 1) - ic->h * s) / 2;
-    miniIconDrawTop(d, x, top, *ic);
+    miniIconDraw(d, x, y, *ic);
   }
 
   void dispatch(Action a) {
@@ -87,7 +92,7 @@ public:
         display.setCursor(2, y);
         display.print(collapsed ? "+" : "-");
         const int icon_x = 2 + cw + 2;
-        // drawIcon(display, icon_x, y, SECTIONS[sec].icon); // icons disabled for now, don't fit visually
+        drawIcon(display, icon_x, y, SECTIONS[sec].icon);
         display.setCursor(icon_x + g, y);
         display.print(SECTIONS[sec].name);
       },
@@ -95,7 +100,7 @@ public:
       [&](int sec, int item, int y, bool sel, int reserve) {
         drawRowSelection(display, y, sel, reserve);
         const int icon_x = 2 + cw + 2;   // align item icons under the header icon
-        // drawIcon(display, icon_x, y, SECTIONS[sec].tools[item].icon); // icons disabled for now, don't fit visually
+        drawIcon(display, icon_x, y, SECTIONS[sec].tools[item].icon);
         display.setCursor(icon_x + g, y);
         display.print(SECTIONS[sec].tools[item].label);
       });
@@ -128,14 +133,14 @@ const ToolsScreen::Tool ToolsScreen::COMMS_TOOLS[] = {
   { "Remote Bot",     &ICON_BOT,      ACT_BOT },
   { "Auto-Advert",    &ICON_ADVERT,   ACT_AUTOADVERT },
   { "Repeater",       &ICON_REPEATER, ACT_REPEATER },
-  { "Admin",          &ICON_GEAR,     ACT_ADMIN },
+  { "Admin",          &ICON_KEY,      ACT_ADMIN },
 };
 const ToolsScreen::Tool ToolsScreen::SYSTEM_TOOLS[] = {
   { "Clock Tools",     &ICON_ALARM, ACT_CLOCK },
   { "Ringtone Editor", &ICON_NOTE,  ACT_RINGTONE },
   { "Diagnostics",     &ICON_CHART, ACT_DIAGNOSTICS },
 #if defined(PIN_GPIO1)
-  { "GPIO",            &ICON_GEAR,  ACT_GPIO },
+  { "GPIO",            &ICON_PINS,  ACT_GPIO },
 #endif
 };
 const ToolsScreen::Section ToolsScreen::SECTIONS[] = {

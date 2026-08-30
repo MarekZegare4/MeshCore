@@ -467,7 +467,7 @@ class SettingsScreen : public UIScreen {
       display.print("N/A");
 #endif
     } else if (item == BUZZER_VOLUME) {
-      display.print("BzrVol");
+      display.print("Buzzer vol");
 #ifdef PIN_BUZZER
       renderBar(display, valCol(display), y, _task->getBuzzerVolume() + 1, 5);
 #else
@@ -568,16 +568,16 @@ class SettingsScreen : public UIScreen {
       if (sel && r > 0) mq_delay = r;
 #if AUTO_OFF_MILLIS > 0
     } else if (item == AUTO_OFF) {
-      display.print("AutoOff");
+      display.print("Auto off");
       display.setCursor(valCol(display), y);
       display.print(AUTO_OFF_LABELS[autoOffIndex()]);
 #endif
     } else if (item == AUTO_LOCK) {
-      display.print("AutoLock");
+      display.print("Auto lock");
       display.setCursor(valCol(display), y);
       display.print((p && p->auto_lock) ? "ON" : "OFF");
     } else if (item == TIMEZONE) {
-      display.print("TimeZone");
+      display.print("Time zone");
       char buf[8];
       int8_t tz = p ? p->tz_offset_hours : 0;
       if (tz >= 0) snprintf(buf, sizeof(buf),"UTC+%d", (int)tz);
@@ -585,7 +585,7 @@ class SettingsScreen : public UIScreen {
       display.setCursor(valCol(display), y);
       display.print(buf);
     } else if (item == LOW_BAT) {
-      display.print("LowBat");
+      display.print("Low batt");
       display.setCursor(valCol(display), y);
       display.print(LOW_BAT_LABELS[lowBatIndex()]);
 #if ENV_INCLUDE_GPS == 1
@@ -624,7 +624,7 @@ class SettingsScreen : public UIScreen {
       display.print((p && p->keyboard_cardkb_compact) ? "Compact" : "Full");
 #endif
     } else if (item == BATT_DISPLAY) {
-      display.print("BattDisp");
+      display.print("Batt disp");
       display.setCursor(valCol(display), y);
       uint8_t mode = p ? p->batt_display_mode : 0;
       display.print(BATT_DISPLAY_LABELS[mode < BATT_DISPLAY_COUNT ? mode : 0]);
@@ -1118,7 +1118,7 @@ public:
 
 #if AUTO_OFF_MILLIS > 0
 const uint16_t SettingsScreen::AUTO_OFF_OPTS[5]   = { 5, 15, 30, 60, 0 };
-const char*    SettingsScreen::AUTO_OFF_LABELS[5]  = { "5s", "15s", "30s", "60s", "never" };
+const char*    SettingsScreen::AUTO_OFF_LABELS[5]  = { "5s", "15s", "30s", "60s", "OFF" };
 #endif
 const uint16_t SettingsScreen::LOW_BAT_OPTS[7]   = { 0, 3000, 3100, 3200, 3300, 3400, 3500 };
 const char*    SettingsScreen::LOW_BAT_LABELS[7]  = { "OFF", "3.0V", "3.1V", "3.2V", "3.3V", "3.4V", "3.5V" };
@@ -1126,8 +1126,8 @@ const char*    SettingsScreen::LOW_BAT_LABELS[7]  = { "OFF", "3.0V", "3.1V", "3.
 const uint32_t SettingsScreen::GPS_DUTY_OPTS[6]   = { 0, 60, 300, 900, 1800, 3600 };
 const char*    SettingsScreen::GPS_DUTY_LABELS[6] = { "OFF", "1 min", "5 min", "15 min", "30 min", "1 h" };
 #endif
-const char*    SettingsScreen::BATT_DISPLAY_LABELS[3] = { "icon", "%", "V" };
-const char*    SettingsScreen::SOUND_LABELS[4] = { "built-in", "M1", "M2", "None" };
+const char*    SettingsScreen::BATT_DISPLAY_LABELS[3] = { "Icon", "%", "V" };
+const char*    SettingsScreen::SOUND_LABELS[4] = { "Built-in", "M1", "M2", "None" };
 const char*    SettingsScreen::AD_SCOPE_LABELS[2] = { "All", "Zero-hop" };
 #if FEAT_FULL_REFRESH_SETTING
 const char* SettingsScreen::EINK_FULL_REFRESH_LABELS[5] = { "OFF", "5", "10", "20", "30" };

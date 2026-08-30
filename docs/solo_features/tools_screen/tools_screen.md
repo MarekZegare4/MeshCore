@@ -532,9 +532,9 @@ Navigate with **UP/DOWN**; change a value with **LEFT/RIGHT** (or **Enter** for 
 | -------------- | --------------- | -------------------------------------------------------------------------------------------------------------- |
 | Repeater       | ON / OFF        | Master switch. The options below appear only while it is ON.                                                    |
 | Network        | Current / Custom | **Custom** _(default)_: enabling the repeater switches to a dedicated profile (below), disabling restores the companion's settings. A never-configured device seeds Custom from your own network's band (433/868/915 MHz region), not a flat default, so it can't land outside what's legal for your region. **Current**: relay on the companion's own frequency — opt-in, not the community norm. |
-| Rpt preset     | named presets   | _(Custom only)_ **Enter** picks a community/saved preset for the repeater profile. |
-| Rpt freq       | chip range      | _(Custom only)_ **Enter** opens the digit-by-digit editor (chip-validated bounds). |
-| Rpt SF / BW / CR | 5–12 / 7.8–500 kHz / 5–8 | _(Custom only)_ **LEFT/RIGHT** to adjust the profile's spreading factor, bandwidth, coding rate. |
+| Preset         | named presets   | _(Custom only)_ **Enter** picks a community/saved preset for the repeater profile. |
+| Freq           | chip range      | _(Custom only)_ **Enter** opens the digit-by-digit editor (chip-validated bounds). |
+| SF / BW / CR   | 5–12 / 7.8–500 kHz / 5–8 | _(Custom only)_ **LEFT/RIGHT** to adjust the profile's spreading factor, bandwidth, coding rate. |
 | Skip advert    | ON / OFF        | Don't re-flood **advert** packets (the highest-volume flood traffic); messages and acks still relay.           |
 | Max hops       | OFF / 1–8       | Drop a flood packet once it has already travelled this many hops.                                              |
 | Yield          | OFF / x2–x9     | Scales the retransmit delay for **forwarded** floods only (your own sends are unaffected), so a mobile companion defers to better-sited fixed repeaters. Widens the window for **Suppress dup**. |

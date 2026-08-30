@@ -137,7 +137,7 @@ In the **Rooms** list the context menu instead offers:
 | Mark all read             | Clears all unread for this channel                                    |
 | Notif: default / OFF / ON | Per-channel notification override — **LEFT/RIGHT** to cycle           |
 | Melody: global / M1 / M2  | Per-channel melody override — **LEFT/RIGHT** to cycle                 |
-| Fav: yes / no             | Add or remove this channel from favourites — **LEFT/RIGHT** to toggle |
+| Fav: ON / OFF             | Add or remove this channel from favourites — **LEFT/RIGHT** to toggle |
 | Edit                      | Opens the Add/Edit form below, pre-filled with the channel's name    |
 | Delete                    | Removes the channel immediately (no confirm prompt)                   |
 
