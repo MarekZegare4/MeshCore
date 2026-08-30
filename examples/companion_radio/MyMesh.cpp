@@ -1972,6 +1972,22 @@ void MyMesh::handleCmdFrame(size_t len) {
         memcpy(&out_frame[2], &expected_ack, 4);
         memcpy(&out_frame[6], &est_timeout, 4);
         _serial->writeFrame(out_frame, 10);
+
+#ifdef DISPLAY_CLASS
+        // Mirror this app-originated DM into the on-device history too, same as
+        // a message composed on-device (MessagesScreen::afterSend) -- otherwise
+        // the two queues drift and a DM sent from the phone app never shows up
+        // if that same contact is later opened on the device's own screen.
+        // ack_tag/ack_deadline mirror the on-device pending->()/x delivery marker
+        // too (same "+4s margin over the estimate" the on-device compose path
+        // uses); resends stays 0 -- the app already owns its own resend/retry
+        // decision, so this only drives the on-screen status, never a second,
+        // independent auto-resend from the device itself.
+        if (_ui && txt_type == TXT_TYPE_PLAIN) {
+          uint32_t ack_deadline_ms = expected_ack ? (millis() + est_timeout + 4000) : 0;
+          _ui->addDMMsg(recipient->id.pub_key, true, text, msg_timestamp, expected_ack, ack_deadline_ms, 0);
+        }
+#endif
       }
     } else {
       writeErrFrame(recipient == NULL
@@ -1994,6 +2010,28 @@ void MyMesh::handleCmdFrame(size_t len) {
       bool success = getChannel(channel_idx, channel);
       if (success && sendGroupMessage(msg_timestamp, channel.channel, _prefs.node_name, text, len - i)) {
         writeOKFrame();
+#ifdef DISPLAY_CLASS
+        // Mirror this app-originated channel post into the on-device history,
+        // same "Me: " framing MessagesScreen::afterSend uses for an on-device
+        // compose -- otherwise the two queues drift and a post sent from the
+        // phone app never shows up if that channel is later opened on-device.
+        // text isn't guaranteed null-terminated (len - i is its real length,
+        // same bound sendGroupMessage above was just given), so bound the copy.
+        if (_ui) {
+          char entry[MAX_TEXT_LEN + 8];   // "Me: " + text
+          int tlen = len - i;
+          if (tlen > MAX_TEXT_LEN) tlen = MAX_TEXT_LEN;
+          snprintf(entry, sizeof(entry), "Me: %.*s", tlen, text);
+          int pos = _ui->addChannelMsg(channel_idx, entry, msg_timestamp);
+          // Same "relayed into mesh" marker an on-device channel send arms (see
+          // MessagesScreen::afterSend): sendGroupMessage above already went
+          // through sendFloodScoped(GroupChannel&, ...), which calls
+          // trackRelaySend() unconditionally, so lastChannelRelaySeq() is
+          // already the seq for the send that was just made -- this just
+          // attaches it to the matching history entry.
+          if (pos >= 0) _ui->armChannelRelay(pos, lastChannelRelaySeq());
+        }
+#endif
       } else {
         writeErrFrame(ERR_CODE_NOT_FOUND); // bad channel_idx
       }

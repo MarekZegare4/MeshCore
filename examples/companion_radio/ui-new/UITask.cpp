@@ -1766,9 +1766,13 @@ int UITask::getRecentDMContacts(uint8_t out[][NodePrefs::FAVOURITE_PREFIX_LEN], 
   return ((MessagesScreen*)messages_screen)->getRecentDMContacts(out, max);
 }
 
-void UITask::addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp) {
+int UITask::addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp) {
   _last_notif_ch_idx = (int)channel_idx;
-  ((MessagesScreen*)messages_screen)->addChannelMsg(channel_idx, text, timestamp);
+  return ((MessagesScreen*)messages_screen)->addChannelMsg(channel_idx, text, timestamp);
+}
+
+void UITask::armChannelRelay(int pos, uint32_t seq) {
+  ((MessagesScreen*)messages_screen)->armChannelRelay(pos, seq);
 }
 
 int UITask::getChannelUnreadCount() const {
@@ -1801,8 +1805,9 @@ void UITask::onAdminReply(const uint8_t* pub_key, const char* text) {
   _next_refresh = 0;   // same reasoning as onRoomLoginResult above
 }
 
-void UITask::addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text, uint32_t sender_timestamp) {
-  ((MessagesScreen*)messages_screen)->addDMMsg(pub_key, outgoing, text, sender_timestamp);
+void UITask::addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text, uint32_t sender_timestamp,
+                      uint32_t ack_tag, uint32_t ack_deadline_ms, uint8_t resends) {
+  ((MessagesScreen*)messages_screen)->addDMMsg(pub_key, outgoing, text, sender_timestamp, ack_tag, ack_deadline_ms, resends);
 }
 
 int UITask::getDMUnreadTotal() const {

@@ -661,10 +661,12 @@ public:
     return pos;
   }
   void markChannelRelayed(uint32_t seq) { _history.markChannelRelayed(seq); }
+  void armChannelRelay(int pos, uint32_t seq) { _history.armChannelRelay(pos, seq); }
   void addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text,
-                uint32_t sender_timestamp = 0) {
+                uint32_t sender_timestamp = 0, uint32_t ack_tag = 0,
+                uint32_t ack_deadline_ms = 0, uint8_t resends = 0) {
     bool viewing = (_phase == DM_HIST && memcmp(_sel_contact.id.pub_key, pub_key, 4) == 0);
-    _history.addDMMsg(pub_key, outgoing, text, sender_timestamp);
+    _history.addDMMsg(pub_key, outgoing, text, sender_timestamp, ack_tag, ack_deadline_ms, resends);
     if (viewing && _dm_hist_sel > 0) { _dm_hist_sel++; _dm_hist_scroll++; }   // see addChannelMsg
   }
   void markDmDelivered(uint32_t ack_crc) { _history.markDmDelivered(ack_crc); }

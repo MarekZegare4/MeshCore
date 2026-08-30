@@ -84,8 +84,19 @@ public:
   virtual void msgRead(int msgcount) = 0;
   virtual void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, uint8_t contact_type = 0, const uint8_t* pub_key = nullptr) = 0;
   virtual void notify(UIEventType t = UIEventType::none) = 0;
-  virtual void addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp = 0) {}
-  virtual void addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text, uint32_t sender_timestamp = 0) {}
+  // Returns the new entry's ring position (see MessageHistory::addChannelMsg),
+  // or -1 on a UI variant that doesn't track history (default no-op below) --
+  // callers that need it (to then arm a relay-echo tracker) should check for
+  // that instead of assuming a valid position.
+  virtual int addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp = 0) { return -1; }
+  // Arms the "relayed into mesh" tracker (a heard repeater rebroadcast) on the
+  // entry at ring position pos, e.g. right after addChannelMsg for a channel
+  // send this device just originated. seq: MyMesh::lastChannelRelaySeq().
+  virtual void armChannelRelay(int pos, uint32_t seq) {}
+  // ack_tag/ack_deadline_ms/resends: pending-ACK tracking for an outgoing DM
+  // (0 = none, e.g. incoming or "no ack expected") -- see MessageHistory::addDMMsg.
+  virtual void addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text, uint32_t sender_timestamp = 0,
+                        uint32_t ack_tag = 0, uint32_t ack_deadline_ms = 0, uint8_t resends = 0) {}
   // A node shared its current position via a [LOC] message. pub_key is the
   // sender's key prefix for a verified DM share, or null for a channel share
   // (keyed by name, best-effort). Default no-op so UI variants opt in.

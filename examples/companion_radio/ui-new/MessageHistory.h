@@ -212,8 +212,13 @@ public:
     _dm_hist[pos].resends_left    = (outgoing && ack_tag) ? resends : 0;
   }
 
+  // ack_tag/ack_deadline_ms/resends let an outgoing DM (e.g. one the phone app
+  // just sent via CMD_SEND_TXT_MSG) carry the same pending-ACK tracking a
+  // message composed on-device gets from storeDMMsg() directly — otherwise it
+  // shows with no delivery status at all. Unused (0) for incoming.
   void addDMMsg(const uint8_t* pub_key, bool outgoing, const char* text,
-                uint32_t sender_timestamp = 0) {
+                uint32_t sender_timestamp = 0, uint32_t ack_tag = 0,
+                uint32_t ack_deadline_ms = 0, uint8_t resends = 0) {
     // Drop retried copies of an incoming DM: a resend reuses the sender's
     // timestamp and text but carries a fresh packet hash, so the mesh dup-filter
     // lets it through. Match on prefix + sender_timestamp + text to suppress it.
@@ -225,7 +230,7 @@ public:
           return;  // duplicate retry — already in history
       }
     }
-    storeDMMsg(pub_key, outgoing, text, 0, 0, outgoing ? 0 : sender_timestamp, 0);
+    storeDMMsg(pub_key, outgoing, text, ack_tag, ack_deadline_ms, sender_timestamp, resends);
   }
 
   int dmHistCountForContact(const uint8_t* prefix) const {
