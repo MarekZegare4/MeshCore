@@ -200,8 +200,11 @@ void MyMesh::tryBotReplyChannel(uint8_t channel_idx, const char* text, uint8_t h
     _bot_reply_count++;
 #ifdef DISPLAY_CLASS
     if (_ui) {
-      char with_sender[240];  // node_name(32) + ": "(2) + expanded(200) + margin
-      snprintf(with_sender, sizeof(with_sender), "%s: %s", _prefs.node_name, expanded);
+      // "Me: " (not node_name) -- MessagesScreen recognises an outgoing bubble
+      // by that literal prefix (see computeBubbleBox's caller), same framing
+      // MessagesScreen::afterSend and the app-originated-post mirror use.
+      char with_sender[240];  // "Me: "(4) + expanded(200) + margin
+      snprintf(with_sender, sizeof(with_sender), "Me: %s", expanded);
       _ui->addChannelMsg(channel_idx, with_sender, 0, nullptr, 0, true);  // own_message: our own bot reply, never unread
     }
 #endif
