@@ -20,7 +20,7 @@ The Tools screen is a hub for GPS trail recording, nearby node browsing, rington
 
 Browse nodes that have recently advertised on the mesh. **Filter** (which nodes) and **sort** (in what order) are independent axes and combine freely.
 
-Filter by category with **LEFT/RIGHT** (one coherent axis — type only):
+Filter by category with **LEFT/RIGHT**:
 
 | Filter | Shows                          |
 | ------ | ------------------------------ |
@@ -47,7 +47,7 @@ Select a node to see its coordinates, distance, bearing with cardinal direction,
 | Sort: Dist/Recent      | browsing stored nodes — **LEFT/RIGHT** or **Enter** flips distance ↔ last-heard in place |
 | Discover scan / Rescan | always (live `NODE_DISCOVER_REQ` scan)                                                  |
 
-Filtering stays on the list itself (**LEFT/RIGHT** cycles the type), so there is no separate Filter action in the menu. **Sort** is adjusted in place: highlight the **Sort** row and tap **LEFT/RIGHT** to flip the list (and its right-hand column) between **distance** and **last-heard** without closing the menu — the same in-popup pattern as Trail's settings. The row appears only while browsing stored nodes (live-scan rows carry signal, not distance). Filter and sort are independent and **persist** across re-entry to the screen.
+Filtering stays on the list itself (**LEFT/RIGHT** cycles the type), so there is no separate Filter action in the menu. **Sort** is adjusted in place: highlight the **Sort** row and tap **LEFT/RIGHT** to flip the list (and its right-hand column) between **distance** and **last-heard** without closing the menu. The row appears only while browsing stored nodes (live-scan rows carry signal, not distance). Filter and sort are independent and **persist** across re-entry to the screen.
 
 Selecting **Ping** opens the Ping popup:
 
@@ -140,7 +140,7 @@ Cycle views with **LEFT / RIGHT**:
 
 **Auto-pause** — when set, a recording trail automatically **pauses** after the device has stayed within ~15 m of one spot for the chosen delay: the elapsed timer and point sampling both freeze, and the map line breaks across the idle gap. It **resumes on its own** as soon as you move again. This keeps a stop (a break, a meal, parking) out of your distance and average-speed stats without you having to remember to stop and restart tracking. A paused trail is still "on" (the **G** marker keeps blinking) — the Summary **Status** row shows `paused`. The stop is detected with its own coarse movement gate, independent of **Min dist**, so GPS jitter while you're parked doesn't keep it awake.
 
-**Auto-save** — with this on (default off), the live trail is written to flash automatically when the device powers off, so a **low-battery auto-shutdown** no longer discards the whole route. It saves to the same `/trail` file as the manual **Trail file… → Save**, and only writes when the trail actually has points — an empty trail can't overwrite a previously saved one. Off by default so a normal shutdown doesn't silently overwrite a saved trail you meant to keep.
+**Auto-save** — with this on (default off), the live trail is written to flash automatically when the device powers off, so a **low-battery auto-shutdown** no longer discards the whole route. It saves to the same `/trail` file as the manual **Trail file… → Save**, and only writes when the trail actually has points — an empty trail can't overwrite a previously saved one.
 
 ### Track back
 

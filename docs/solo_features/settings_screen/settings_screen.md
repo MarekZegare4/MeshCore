@@ -106,7 +106,7 @@ The **repeater** mode and its flood filters live on their own screen — see **T
 | Additional | Latin / Cyrillic / Greek | The second script in the **#@/abc** key's cycle (Main → Additional → Symbols → Main). Setting it to the same script as Main drops the cycle to just that script plus Symbols. **Greek** covers the 24-letter alphabet plus final sigma (`ς`), not the tonos stress accents. Every script renders natively via one shared Unicode font — no separate toggle needed. |
 | Ext. KB | Full / Compact | Only shown on a build with CardKB support (`CARDKB_I2C` or `ENV_PIN_SDA`/`ENV_PIN_SCL` set). Picks how the on-screen keyboard behaves while a CardKB is doing the typing — see [External Keyboard & Joystick](../external_keyboard.md#ext-kb--full-vs-compact). |
 
-Applies to every on-screen text field (messages, waypoint labels, room passwords, preset names). Earlier releases labelled the grid *QWERTY*; the layout has always been alphabetical, so it is now named **ABC**.
+Applies to every on-screen text field (messages, waypoint labels, room passwords, preset names).
 
 European Latin-diacritic letters (Polish, Czech, Slovak, German, French, Spanish, Portuguese, Nordic, etc.) aren't separate alphabet pages — instead, **Hold Enter** on a plain Latin letter that has accented variants (`a c d e i l n o r s t u y z`) opens a one-row popup of its accents (e.g. holding `a` offers `á à â ã ä å ą`); **LEFT/RIGHT** picks, **Enter** inserts it, **Cancel** dismisses with no change. Holding a letter with no accented variants (e.g. `b`) does nothing. Works on whichever page is currently showing Latin, whether that's Main or Additional.
 
