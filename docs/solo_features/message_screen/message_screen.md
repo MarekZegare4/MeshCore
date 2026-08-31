@@ -64,7 +64,7 @@ Posting to a **room server** needs a login handshake — the device does this on
 
 Messages appear as chat bubbles sized to their content — **right**-anchored for outgoing, **left** for incoming — with sender name and a compact age indicator (`3m`, `2h`, `>1d`) in the top-right corner. List runs **newest at the bottom**; opening a history starts at the latest message, scrolling up goes further back.
 
-**Short Enter** on a message opens it in fullscreen. **Hold Enter** — on a history row or in fullscreen — opens the same options menu: Reply, plus **Navigate** / **Save waypoint** when the message contains a location, and **Path** / **Relayed by** when hop data is available (see Fullscreen message view). You don't need to open the message first.
+**Short Enter** on a message opens it in fullscreen. **Hold Enter** — on a history row or in fullscreen — opens the same options menu: Reply, plus **Navigate** / **Save waypoint** / **Set as target** when the message contains a location, and **Path** / **Relayed by** when hop data is available (see Fullscreen message view). You don't need to open the message first.
 
 ---
 
@@ -82,10 +82,11 @@ If the message is a reply addressed to someone (`@[nick]`), a **To: nick** bar i
 | :-----------------------: | :-----------------------: |
 | ![](./fullscreen_menu_oled.png) | ![](./fullscreen_menu_eink.png) |
 
-**Hold Enter** in fullscreen opens the options menu. It always offers **Reply** for an incoming message, and when the message contains a **location** it adds two more:
+**Hold Enter** in fullscreen opens the options menu. It always offers **Reply** for an incoming message, and when the message contains a **location** it adds three more:
 
 - **Navigate** — opens the bearing/distance view to those coordinates (the same two-bearing screen as Waypoints and Nearby; **Back** returns to the message).
 - **Save waypoint** — stores the location as a waypoint (visible on the trail map and in the Waypoints list).
+- **Set as target** — pins those coordinates as the active **Locator/Nav target** in one step, the same row Nodes and Waypoints offer (see Tools › Locator).
 
 A location is any `lat,lon` pair in the text — exactly what the `{loc}` placeholder inserts — so you can navigate to anything a contact shares. A `[WAY]lat,lon label` share also carries a name, used as the waypoint label. This works on DMs and channel messages, incoming or outgoing.
 

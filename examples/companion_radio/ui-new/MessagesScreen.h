@@ -81,8 +81,8 @@ class MessagesScreen : public UIScreen {
   // location (a {loc} string or a [WAY] share), plus Path/Relayed by when the
   // entry has hop data recorded. _fs_act maps each visible row back to an
   // action so the index math survives the conditional layout.
-  enum FsAct : uint8_t { FS_REPLY, FS_NAV, FS_SAVE, FS_PATH };
-  uint8_t   _fs_act[4];
+  enum FsAct : uint8_t { FS_REPLY, FS_NAV, FS_SAVE, FS_TARGET, FS_PATH };
+  uint8_t   _fs_act[5];
   int       _fs_act_n = 0;
   // Which history entry the currently-open Options menu (and, after FS_PATH is
   // chosen, the path/relay detail popup) refers to -- set by buildFsMenu().
@@ -102,6 +102,7 @@ class MessagesScreen : public UIScreen {
   char      _fs_path_item[24];
   // Inline navigate-to-location view layered over the fullscreen message.
   bool      _nav_active = false;
+  navview::EtaTracker _nav_eta;   // closing speed / ETA, as in the other navigate views
   int32_t   _nav_lat = 0, _nav_lon = 0;
   char      _nav_label[24] = "";
 
@@ -292,11 +293,11 @@ class MessagesScreen : public UIScreen {
   }
 
   // Build the fullscreen-message options popup: Reply (if allowed), Navigate /
-  // Save waypoint when `body` carries a location, and Path / Relayed by when
-  // the entry (ring_pos, in the DM ring or the channel ring per is_channel)
-  // has hop data recorded. Opens _ctx_menu only when there's at least one
-  // action. Parses the location once here and stashes it for the action
-  // handler; stashes ring_pos/is_channel too, for showPathDetail().
+  // Save waypoint / Set as target when `body` carries a location, and Path /
+  // Relayed by when the entry (ring_pos, in the DM ring or the channel ring
+  // per is_channel) has hop data recorded. Opens _ctx_menu only when there's at
+  // least one action. Parses the location once here and stashes it for the
+  // action handler; stashes ring_pos/is_channel too, for showPathDetail().
   void buildFsMenu(const char* body, bool reply_allowed, int ring_pos, bool is_channel) {
     _fs_menu_pos = ring_pos;
     _fs_menu_is_channel = is_channel;
@@ -312,13 +313,14 @@ class MessagesScreen : public UIScreen {
     }
     bool has_path_item = hop_count > 0;
 
-    int n = (reply_allowed ? 1 : 0) + (has_loc ? 2 : 0) + (has_path_item ? 1 : 0);
+    int n = (reply_allowed ? 1 : 0) + (has_loc ? 3 : 0) + (has_path_item ? 1 : 0);
     if (n == 0) return;
     _fs_act_n = 0;
     _ctx_menu.begin("Options", n);
     if (reply_allowed) { _ctx_menu.addItem("Reply");         _fs_act[_fs_act_n++] = FS_REPLY; }
     if (has_loc)       { _ctx_menu.addItem("Navigate");      _fs_act[_fs_act_n++] = FS_NAV;
-                         _ctx_menu.addItem("Save waypoint"); _fs_act[_fs_act_n++] = FS_SAVE; }
+                         _ctx_menu.addItem("Save waypoint"); _fs_act[_fs_act_n++] = FS_SAVE;
+                         _ctx_menu.addItem("Set as target"); _fs_act[_fs_act_n++] = FS_TARGET; }
     if (has_path_item) {
       if (path_is_relay) snprintf(_fs_path_item, sizeof(_fs_path_item), "Relayed by (%u)", (unsigned)hop_count);
       else               snprintf(_fs_path_item, sizeof(_fs_path_item), "Path (%u hop%s)", (unsigned)hop_count, hop_count == 1 ? "" : "s");
@@ -384,8 +386,14 @@ class MessagesScreen : public UIScreen {
       startReply(channel);
     } else if (a == FS_NAV) {
       _nav_active = true;            // keep the message view active underneath
+      _nav_eta.reset();
     } else if (a == FS_SAVE) {
       saveSharedWaypoint();
+    } else if (a == FS_TARGET) {
+      // Kind 0 (a place): the coordinates were snapshotted out of the message
+      // text, so there is no contact to keep re-resolving them from.
+      _task->setTargetNow(0, nullptr, _nav_lat, _nav_lon,
+                          _nav_label[0] ? _nav_label : "Msg loc");
     } else if (a == FS_PATH) {
       showPathDetail();
     }
@@ -407,9 +415,8 @@ class MessagesScreen : public UIScreen {
   void renderNav(DisplayDriver& display) {
     int32_t mylat, mylon; bool have = _task->currentLocation(mylat, mylon);
     int cog; bool cogv = _task->currentCourse(cog);
-    NodePrefs* p = _task->getNodePrefs();
     navview::draw(display, have, mylat, mylon, _nav_lat, _nav_lon,
-                  _nav_label[0] ? _nav_label : "Msg loc", cogv, cog, p && p->units_imperial);
+                  _nav_label[0] ? _nav_label : "Msg loc", cogv, cog, _task->useImperial(), &_nav_eta);
   }
 
   void setupMsgPick() {
@@ -1783,9 +1790,9 @@ public:
     // Channel Add/Edit form consumes all input while active.
     if (_ch_view.active()) return _ch_view.handleInput(c);
 
-    // Navigate view: Back or Enter returns to the message it was opened from.
+    // Navigate view: Back returns to the message it was opened from.
     if (_nav_active) {
-      if (c == KEY_CANCEL || c == KEY_ENTER) _nav_active = false;
+      if (c == KEY_CANCEL) _nav_active = false;
       return true;
     }
     if (_phase == MODE_SELECT) {

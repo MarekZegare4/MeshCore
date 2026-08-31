@@ -41,7 +41,14 @@ class NearbyScreen : public UIScreen {
     char     name[32];
     uint8_t  type;
     uint8_t  pub_key[PUB_KEY_SIZE];
+    // has_key: the full 32-byte pubkey is present -- what Ping and the base64
+    // key view need. has_prefix: at least the leading FAVOURITE_PREFIX_LEN
+    // bytes are, which is all an identity-keyed reference needs (a Locator
+    // person target, resolved via UITask::resolvePersonPos). Every has_key row
+    // also has_prefix; the reverse doesn't hold -- a [LOC] share and a heard
+    // advert carry a prefix and nothing more.
     bool     has_key;
+    bool     has_prefix;
     // stored-source fields
     int32_t  lat_e6, lon_e6;
     float    dist_km;
@@ -193,6 +200,7 @@ class NearbyScreen : public UIScreen {
       e.name[sizeof(e.name) - 1] = '\0';
       memcpy(e.pub_key, ci.id.pub_key, PUB_KEY_SIZE);
       e.has_key = true;
+      e.has_prefix = true;
       e.lat_e6  = ci.gps_lat;
       e.lon_e6  = ci.gps_lon;
       bool remote_gps = (ci.gps_lat != 0 || ci.gps_lon != 0);
@@ -280,7 +288,12 @@ class NearbyScreen : public UIScreen {
         // We only keep a key *prefix* for shares, not the full pubkey, so Ping
         // and the base64 key view (which need 32 bytes) stay unavailable for a
         // non-contact live entry. Navigate / Save-waypoint work off lat/lon.
+        // A DM share is pubkey-keyed, so the prefix is real and good enough to
+        // keep re-resolving them as a Locator person target; a channel share is
+        // matched by name and carries no identity at all.
         e.has_key       = false;
+        e.has_prefix    = s.verified;
+        if (s.verified) memcpy(e.pub_key, s.key, LiveTrackStore::KEY_LEN);
         e.type          = ADV_TYPE_CHAT;
         e.lat_e6        = s.lat_1e6;
         e.lon_e6        = s.lon_1e6;
@@ -318,6 +331,8 @@ class NearbyScreen : public UIScreen {
       e.name[sizeof(e.name) - 1] = '\0';
       e.type        = ADV_TYPE_CHAT;   // unknown from AdvertPath — best-effort label
       e.has_key     = false;
+      e.has_prefix  = true;
+      memcpy(e.pub_key, a.pubkey_prefix, sizeof(a.pubkey_prefix));
       e.dist_km     = -1.0f;
       e.lastmod     = a.recv_timestamp;
       e.contact_idx = -1;
@@ -363,6 +378,7 @@ class NearbyScreen : public UIScreen {
       e.type          = dr[i].type;
       memcpy(e.pub_key, dr[i].pub_key, PUB_KEY_SIZE);
       e.has_key       = true;
+      e.has_prefix    = true;
       e.rssi          = dr[i].rssi;
       e.snr_x4        = dr[i].snr_x4;
       e.remote_snr_x4 = dr[i].remote_snr_x4;
@@ -598,9 +614,9 @@ class NearbyScreen : public UIScreen {
     if (has_gps) add("Navigate",      ACT_NAV);
     if (has_key) add("Ping",          ACT_PING);
     if (has_gps) add("Save waypoint", ACT_WAYPOINT);
-    // Needs both a position and a stable identity — a person target is keyed
-    // by pubkey prefix, so a name-only live-scan/channel row can't offer this.
-    if (has_gps && has_key) add("Set as target", ACT_LOCATOR);
+    // Only a position is needed: with an identity prefix this becomes a person
+    // target that follows them, without one a place target pinned where they were.
+    if (has_gps) add("Set as target", ACT_LOCATOR);
     if (can_add)            add("Add contact", ACT_ADD);
     if (is_contact && has_key) {
       snprintf(_fav_label, sizeof(_fav_label), e->fav ? "Fav: ON" : "Fav: OFF");
@@ -661,8 +677,12 @@ class NearbyScreen : public UIScreen {
       case ACT_WAYPOINT: saveSelectedWaypoint(); break;
       case ACT_LOCATOR: {
         const Entry* e = selected();
-        if (e && e->has_key && (e->lat_e6 != 0 || e->lon_e6 != 0))
-          _task->setTargetNow(1, e->pub_key, e->lat_e6, e->lon_e6, e->name);
+        if (!e || (e->lat_e6 == 0 && e->lon_e6 == 0)) break;
+        // A prefix is enough to keep re-resolving someone who is moving; without
+        // one (a channel share, matched by name) the honest target is the place
+        // they were last seen, snapshotted like a waypoint.
+        if (e->has_prefix) _task->setTargetNow(1, e->pub_key, e->lat_e6, e->lon_e6, e->name);
+        else               _task->setTargetNow(0, nullptr,    e->lat_e6, e->lon_e6, e->name);
         break;
       }
       case ACT_ADD: {
@@ -963,7 +983,7 @@ public:
   bool handleInput(char c) override {
     // ── navigate-to-node view — any nav key returns to detail ─────────────────
     if (_nav) {
-      if (c == KEY_CANCEL || keyIsPrev(c) || keyIsNext(c)) _nav = false;
+      if (c == KEY_CANCEL) _nav = false;   // only Back leaves a navigate view
       return true;
     }
 

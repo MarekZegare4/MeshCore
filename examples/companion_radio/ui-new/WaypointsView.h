@@ -31,6 +31,7 @@ class WaypointsView {
   static const int TB_ARRIVE_M = 20;
   int                 _tb_idx = 0;
   navview::EtaTracker _tb_eta;
+  navview::EtaTracker _wp_eta;   // same readout for plain waypoint navigation
 
   // GPS averaging (Tools › Trail › Settings › Mark avg). When enabled, markHere()
   // accumulates fixes for gps_avg_idx seconds and marks the mean position — a
@@ -235,7 +236,7 @@ class WaypointsView {
     if (!rowTarget(_sel, tlat, tlon, label)) { _mode = LIST; return; }
     int32_t mylat, mylon; bool have = ownPos(mylat, mylon);
     int cog; bool cogv = _task->currentCourse(cog);
-    navview::draw(display, have, mylat, mylon, tlat, tlon, label, cogv, cog, useImperial());
+    navview::draw(display, have, mylat, mylon, tlat, tlon, label, cogv, cog, useImperial(), &_wp_eta);
   }
 
   // Navigate to the current track-back breadcrumb. The header doubles as the
@@ -462,9 +463,9 @@ public:
       return true;
     }
 
-    // Navigation view — any nav key returns to the list.
+    // Navigation view — Back returns to the list, as in every navigate view.
     if (_mode == NAV) {
-      if (c == KEY_CANCEL || keyIsPrev(c) || keyIsNext(c)) { _mode = LIST; }
+      if (c == KEY_CANCEL) { _mode = LIST; }
       return true;
     }
 
@@ -485,7 +486,7 @@ public:
     if (c == KEY_DOWN) { _sel = (_sel < total - 1) ? _sel + 1 : 0; return true; }
     if (c == KEY_ENTER) {
       if (_sel == n) openAddForm();          // last row → open the add form
-      else           _mode = NAV;            // a waypoint / Trail-start row
+      else           { _mode = NAV; _wp_eta.reset(); }   // a waypoint / Trail-start row
       return true;
     }
     // Rename/Delete/Send/Locator apply to saved waypoints only — not Trail-start or Add.

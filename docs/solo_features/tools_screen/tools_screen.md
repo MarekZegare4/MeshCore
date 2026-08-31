@@ -40,7 +40,7 @@ Select a node to see its coordinates, distance, bearing with cardinal direction,
 | Navigate               | selected node has GPS — for a node sharing live position, the view follows it as it moves and adds an ETA line |
 | Ping                   | a public key is known for the node                                                     |
 | Save waypoint          | selected node has GPS                                                                   |
-| Set as target          | selected node has GPS **and** a public key — pins it as the active **Locator/Nav target** right away (see **Locator**) |
+| Set as target          | selected node has a position — pins it as the active **Locator/Nav target** right away (see **Locator**). A node with a known public key (a contact, a scan result, or someone sharing over DM) becomes a **person** target that keeps following them; a name-only row — someone sharing their position on a channel who isn't your contact — becomes a **place** target pinned where they were, since there's no identity to re-resolve |
 | Fav: ON / OFF          | selected node is a saved contact — **LEFT/RIGHT** or **Enter** toggles it in place, as in the Messages menus; the same starred flag those lists use, shared with the companion app |
 | Pin to dial / Unpin (slot N) | selected node is a saved contact — puts it on the [Favourites Dial](../favourites_dial/favourites_dial.md), taking the first free slot |
 | Admin                  | selected node is a saved **repeater or room server** contact — opens **Tools › Admin** for it directly (see **Admin**) |
@@ -184,11 +184,11 @@ A waypoint is a saved spot — your car, camp, a water source — that you can n
 
 <!-- screenshot pending: Waypoints navigation view — target label, distance, To/Hdg bearings (shared with Nearby/message Navigate) -->
 
-There is no magnetometer, so the screen shows two *absolute* bearings and you compare them: target at 145°, travelling at 90° → bear right. The **Hdg** line is derived from GPS movement (see Compass) and reads `--` until you move.
+There is no magnetometer, so the screen shows two *absolute* bearings and you compare them: target at 145°, travelling at 90° → bear right. The **Hdg** line is derived from GPS movement (see Compass) and reads `--` until you move. A fourth line shows closing speed and **ETA** once you're actually approaching. **Back** leaves the view — it's the only key that does, on every navigate view.
 
 **Managing** — **Hold Enter** on a waypoint row offers **Rename** / **Delete** / **Send** / **Set as target** (the *Trail start* row is navigate-only). **Set as target** pins the waypoint as the active **Locator/Nav target** in one step (see **Locator**). Delete removes one at a time; there is no bulk clear.
 
-**Sharing** — **Send** hands the waypoint to the Messages screen: pick a contact or channel, and the message is pre-filled as `[WAY]<lat>,<lon> <label>` (e.g. `[WAY]37.42123,-122.08456 CAR`) for you to confirm or edit before sending. On the receiving device, opening that message and **Hold Enter → Navigate / Save waypoint** turns it back into a navigable point (see *Messages › Fullscreen message view*). The format is plain text, so it stays readable on other firmware and the phone app.
+**Sharing** — **Send** hands the waypoint to the Messages screen: pick a contact or channel, and the message is pre-filled as `[WAY]<lat>,<lon> <label>` (e.g. `[WAY]37.42123,-122.08456 CAR`) for you to confirm or edit before sending. On the receiving device, opening that message and **Hold Enter → Navigate / Save waypoint / Set as target** turns it back into a navigable point (see *Messages › Fullscreen message view*). The format is plain text, so it stays readable on other firmware and the phone app.
 
 ### Downloading GPX
 
@@ -274,7 +274,7 @@ Navigate with **UP/DOWN**, change a value with **LEFT/RIGHT** (or **Enter**); **
 | Setting | Options                          | Notes                                                                                  |
 | ------- | -------------------------------- | -------------------------------------------------------------------------------------- |
 | Alert   | ON / OFF                         | Master switch. Enabling without a target prompts you to pick one.                      |
-| Target  | none / person / waypoint         | **Enter** opens a picker — **None** first (clears the target), then **dial-pinned people** (offered even with no known position yet, so you can arm ahead of time), then any other contact with a currently-resolvable position (live-sharing *or* just last-advertised, e.g. a repeater), then waypoints; **UP/DOWN** + **Enter** to choose. **LEFT/RIGHT** quick-cycles the same set in place, including back to **None**. A person is shown with an `@` prefix, a ★ if they're a favourite, plus a compact **age tag** (e.g. `@Bob (5m)`) when the position is last-advertised rather than a live share. Shows `none` until set. |
+| Target  | none / person / waypoint         | **Enter** opens a picker — **None** first (clears the target), then your **favourites** (offered even with no known position yet, so you can arm ahead of time), then any other contact with a currently-resolvable position (live-sharing *or* just last-advertised, e.g. a repeater), then waypoints; **UP/DOWN** + **Enter** to choose. **LEFT/RIGHT** quick-cycles the same set in place, including back to **None**. A person is shown with an `@` prefix, a ★ when they're a favourite, plus a compact **age tag** (e.g. `@Bob (5m)`) when the position is last-advertised rather than a live share. Shows `none` until set. |
 | Radius  | 50 / 100 / 250 / 500 m / 1 km    | Geofence size.                                                                          |
 | Mode    | Arrive / Leave / Both            | Which crossing fires the alert — entering the radius, leaving it, or both.              |
 | Beeper  | ON / OFF                         | Optional homing tone — shown only in **Arrive** / **Both** modes (see below).           |
@@ -285,7 +285,7 @@ Navigate with **UP/DOWN**, change a value with **LEFT/RIGHT** (or **Enter**); **
 
 **Proximity beeper.** With **Beeper** on, the device ticks while inside the radius, shortening the gap as you get closer — slow near the edge, rapid near the centre — like a homing beeper. Silent outside the radius. As an opt-in toggle, it **overrides the global buzzer mute** — an explicit "I want to hear this." It only appears in **Arrive**/**Both** mode (hidden and silent in **Leave**-only). Independent of the crossing alert, which does follow the mute — use either or both.
 
-**Setting the target from anywhere.** Besides this screen's picker, the *same* active target can be set in one step with **Set as target** from **Nearby Nodes**' or **Waypoints**' own **Hold Enter** menu — handy so you don't need a detour through Tools. Picking from this screen's picker saves on exit (so **LEFT/RIGHT** cycling stays cheap); the per-item shortcuts save immediately and confirm with a `Target set` toast.
+**Setting the target from anywhere.** Besides this screen's picker, the *same* active target can be set in one step with **Set as target** from the **Hold Enter** menu of **Nearby Nodes**, **Waypoints**, or a message carrying a location — handy so you don't need a detour through Tools. Picking from this screen's picker saves on exit (so **LEFT/RIGHT** cycling stays cheap); the per-item shortcuts save immediately and confirm with a `Target set` toast.
 
 **On the map.** Whatever the active target is — person or waypoint — it's drawn as a **flag marker** on both the home **Map** preview and the full **Trail Map**, on top of any waypoint/contact it overlaps and folded into the frame so it never sits off-screen. This shows even when the **Alert** master switch is off, so a target you set purely to navigate to still appears.
 

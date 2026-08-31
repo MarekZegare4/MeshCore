@@ -1,12 +1,12 @@
 #pragma once
 // Locator config tool. Tools › Locator.
 // A single geofence whose target is either a saved waypoint (a place) or a
-// person — a favourite/contact or a live [LOC] sender, keyed by pubkey prefix.
+// person — a contact or a live [LOC] sender, keyed by pubkey prefix.
 // When armed the device beeps / alerts as it crosses into (arrive/near) or out
 // of (leave/away) the radius. A waypoint target is snapshotted (coord + label);
 // a person target follows their latest shared position. The crossing engine
 // lives in UITask::evaluateLocator(). The Target row's Enter opens a picker
-// ("None" first — the only way to unset a target once chosen — then
+// ("None" first — the only way to unset a target once chosen — then your
 // favourites, offered even with no known position yet so you can arm ahead
 // of time, then any other contact with a currently-known position:
 // live-sharing or just last-advertised, e.g. a repeater; then waypoints).
@@ -188,8 +188,8 @@ public:
   }
 
   // Build the selectable target set into _targets: "None" first (clears the
-  // target — the only way to unset it once chosen), then favourites (the quick
-  // path you pin ahead of time, offered even with no known position yet), then
+  // target — the only way to unset it once chosen), then your favourites (the
+  // quick path, offered even with no known position yet), then
   // any other contact with a currently-known position — live-sharing or just
   // last-advertised (a repeater, a room, or someone who shared a fix once) —
   // then saved waypoints. A person is keyed by pubkey prefix so the engine
@@ -200,14 +200,11 @@ public:
     none.kind = 2; none.lat = 0; none.lon = 0; none.ts = 0; none.live = false; none.fav = false;
     memset(none.key, 0, 6);
     snprintf(none.name, sizeof(none.name), "(none)");
-    for (int i = 0; i < NodePrefs::FAVOURITES_COUNT; i++) {
-      const uint8_t* pre = _prefs->favourite_contacts[i];
-      bool empty = true;
-      for (int b = 0; b < NodePrefs::FAVOURITE_PREFIX_LEN; b++) if (pre[b]) { empty = false; break; }
-      if (empty) continue;
-      ContactInfo* c = the_mesh.lookupContactByPubKey(pre, NodePrefs::FAVOURITE_PREFIX_LEN);
-      if (!c) continue;
-      addPersonTarget(pre, c->name, /*require_position=*/false, (c->flags & 0x01) != 0);
+    for (int idx = 0; _target_n < TARGET_MAX; idx++) {
+      ContactInfo c;
+      if (!the_mesh.getContactByIdx(idx, c)) break;
+      if (!(c.flags & 0x01)) continue;
+      addPersonTarget(c.id.pub_key, c.name, /*require_position=*/false, true);
     }
     for (int idx = 0; _target_n < TARGET_MAX; idx++) {
       ContactInfo c;
