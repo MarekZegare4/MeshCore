@@ -199,14 +199,7 @@ void MyMesh::tryBotReplyChannel(uint8_t channel_idx, const char* text, uint8_t h
     _bot_last_ch_reply_ms = millis();
     _bot_reply_count++;
 #ifdef DISPLAY_CLASS
-    if (_ui) {
-      // "Me: " (not node_name) -- MessagesScreen recognises an outgoing bubble
-      // by that literal prefix (see computeBubbleBox's caller), same framing
-      // MessagesScreen::afterSend and the app-originated-post mirror use.
-      char with_sender[240];  // "Me: "(4) + expanded(200) + margin
-      snprintf(with_sender, sizeof(with_sender), "Me: %s", expanded);
-      _ui->addChannelMsg(channel_idx, with_sender, 0, nullptr, 0, true);  // own_message: our own bot reply, never unread
-    }
+    if (_ui) _ui->addOwnChannelMsg(channel_idx, expanded);
 #endif
   }
 }
@@ -499,11 +492,7 @@ bool MyMesh::tryBotChannelCommand(uint8_t channel_idx, const char* text, uint8_t
     _bot_last_ch_reply_ms = millis();
     _bot_reply_count++;
 #ifdef DISPLAY_CLASS
-    if (_ui) {
-      char with_sender[240];
-      snprintf(with_sender, sizeof(with_sender), "%s: %s", _prefs.node_name, out);
-      _ui->addChannelMsg(channel_idx, with_sender, 0, nullptr, 0, true);  // own_message: our own bot reply, never unread
-    }
+    if (_ui) _ui->addOwnChannelMsg(channel_idx, out);
 #endif
     if (_locfix_requested) startLocFix(LOCFIX_DEST_CHANNEL, nullptr, channel_idx);
     applyPendingBotActions();
@@ -658,11 +647,7 @@ void MyMesh::sendLocFixResult(const char* msg) {
       _bot_last_ch_reply_ms = millis();
       _bot_reply_count++;
 #ifdef DISPLAY_CLASS
-      if (_ui) {
-        char with_sender[240];
-        snprintf(with_sender, sizeof(with_sender), "%s: %s", _prefs.node_name, msg);
-        _ui->addChannelMsg(_loc_fix.channel_idx, with_sender, 0, nullptr, 0, true);  // own_message: our own bot reply, never unread
-      }
+      if (_ui) _ui->addOwnChannelMsg(_loc_fix.channel_idx, msg);
 #endif
     }
   } else {   // LOCFIX_DEST_CONTACT -- DM or room, both go through sendMessage

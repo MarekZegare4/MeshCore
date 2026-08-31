@@ -5,6 +5,7 @@
 #include <helpers/ui/UIScreen.h>
 #include <helpers/SensorManager.h>
 #include <helpers/BaseSerialInterface.h>
+#include <helpers/BaseChatMesh.h>   // MAX_TEXT_LEN, for addOwnChannelMsg() below
 #include <Arduino.h>
 
 #ifdef PIN_BUZZER
@@ -101,6 +102,24 @@ public:
   virtual int addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp = 0,
                             const uint8_t* path = nullptr, uint8_t path_len = 0,
                             bool own_message = false) { return -1; }
+  // Convenience wrapper around addChannelMsg() for mirroring a channel post
+  // this device just sent itself (bot trigger/command reply, a !gps fix
+  // result, an app-originated send) into the on-device history. Always frames
+  // it with the literal "Me: " prefix -- the convention MessagesScreen uses
+  // (see its bubble-side check) to tell an outgoing post from an incoming
+  // one -- and always passes own_message=true, so a caller can't reintroduce
+  // the bug this replaced: three separate MyMeshBot.h call sites used to
+  // build "<node_name>: " instead, which rendered the reply as an incoming
+  // bubble from a stranger who happened to share the device's own name.
+  // text_len < 0 (default) means text is null-terminated; otherwise only the
+  // first text_len bytes are used (a source buffer isn't always guaranteed
+  // to be null-terminated, e.g. the app-originated mirror).
+  int addOwnChannelMsg(uint8_t channel_idx, const char* text, int text_len = -1, uint32_t timestamp = 0) {
+    char buf[MAX_TEXT_LEN + 8];   // "Me: "(4) + text(MAX_TEXT_LEN) + margin
+    if (text_len < 0) snprintf(buf, sizeof(buf), "Me: %s", text);
+    else              snprintf(buf, sizeof(buf), "Me: %.*s", text_len, text);
+    return addChannelMsg(channel_idx, buf, timestamp, nullptr, 0, true);
+  }
   // Arms the "relayed into mesh" tracker (a heard repeater rebroadcast) on the
   // entry at ring position pos, e.g. right after addChannelMsg for a channel
   // send this device just originated. seq: MyMesh::lastChannelRelaySeq().

@@ -2028,22 +2028,22 @@ void MyMesh::handleCmdFrame(size_t len) {
       if (success && sendGroupMessage(msg_timestamp, channel.channel, _prefs.node_name, text, len - i)) {
         writeOKFrame();
 #ifdef DISPLAY_CLASS
-        // Mirror this app-originated channel post into the on-device history,
-        // same "Me: " framing MessagesScreen::afterSend uses for an on-device
-        // compose -- otherwise the two queues drift and a post sent from the
-        // phone app never shows up if that channel is later opened on-device.
-        // text isn't guaranteed null-terminated (len - i is its real length,
-        // same bound sendGroupMessage above was just given), so bound the copy.
+        // Mirror this app-originated channel post into the on-device history
+        // (addOwnChannelMsg applies the same "Me: " framing
+        // MessagesScreen::afterSend uses for an on-device compose) --
+        // otherwise the two queues drift and a post sent from the phone app
+        // never shows up if that channel is later opened on-device. text
+        // isn't guaranteed null-terminated (len - i is its real length, same
+        // bound sendGroupMessage above was just given), so bound the copy.
+        // own_message=true (inside addOwnChannelMsg): this is our own post,
+        // so it must never bump the channel's unread badge even though the
+        // device's own UI isn't necessarily showing this channel right now
+        // (unlike an on-device compose, which is always looking at the
+        // channel it just sent to).
         if (_ui) {
-          char entry[MAX_TEXT_LEN + 8];   // "Me: " + text
           int tlen = len - i;
           if (tlen > MAX_TEXT_LEN) tlen = MAX_TEXT_LEN;
-          snprintf(entry, sizeof(entry), "Me: %.*s", tlen, text);
-          // own_message=true: this is our own post, so it must never bump the
-          // channel's unread badge even though the device's own UI isn't
-          // necessarily showing this channel right now (unlike an on-device
-          // compose, which is always looking at the channel it just sent to).
-          int pos = _ui->addChannelMsg(channel_idx, entry, msg_timestamp, nullptr, 0, true);
+          int pos = _ui->addOwnChannelMsg(channel_idx, text, tlen, msg_timestamp);
           // Same "relayed into mesh" marker an on-device channel send arms (see
           // MessagesScreen::afterSend): sendGroupMessage above already went
           // through sendFloodScoped(GroupChannel&, ...), which calls
