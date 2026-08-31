@@ -882,15 +882,10 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   // chatter is ignored.
   int32_t loc_lat, loc_lon;
   if (_ui && geo::parseLocShare(text, loc_lat, loc_lon)) {
-    char sender[32] = {0};
-    const char* sep = strstr(text, ": ");
-    if (sep && sep > text) {
-      int n = (int)(sep - text);
-      if (n > (int)sizeof(sender) - 1) n = sizeof(sender) - 1;
-      memcpy(sender, text, n);
-      sender[n] = '\0';
-    }
-    _ui->onSharedLocation(nullptr, sender[0] ? sender : "?", loc_lat, loc_lon, timestamp, false);
+    char sender[32];
+    const char* msg;
+    botChannelSenderSplit(text, sender, sizeof(sender), &msg);
+    _ui->onSharedLocation(nullptr, sender, loc_lat, loc_lon, timestamp, false);
   }
 #endif
 

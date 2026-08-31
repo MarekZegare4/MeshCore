@@ -300,7 +300,7 @@ bool MyMesh::botCommandReply(const char* cmd, const char* arg, const char* arg2,
       }
       bool on  = !strcmp(arg, "on");   // arg was lowercased while parsing (see botScanCommands)
       bool off = !strcmp(arg, "off");
-      if (!on && !off) { snprintf(out, out_len, "gps: on|off|fix?"); return true; }
+      if (!on && !off) { snprintf(out, out_len, "GPS: on|off|fix?"); return true; }
       // Deferred: applyPendingBotActions() actually flips the GPS state, once
       // quiet-hours/cooldown/throttle have passed (see MyMesh.h).
       _bot_gps_action_pending = true;
