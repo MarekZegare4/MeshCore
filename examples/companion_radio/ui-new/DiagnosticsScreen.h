@@ -30,7 +30,7 @@ class DiagnosticsScreen : public UIScreen {
   UITask* _task;
   int _scroll = 0;
   uint8_t _tab = 0;        // persists across visits (like BotScreen's _tab)
-  PopupMenu _reset_menu;   // Live tab, Hold Enter → 1-item "Reset counters" action menu (Back dismisses)
+  PopupMenu _reset_menu;   // Live tab, Hold Enter → Reset/Cancel confirm (defaults to Cancel)
 
   enum Tab : uint8_t { TAB_LIVE, TAB_SYSTEM, TAB_FONT, TAB_COUNT };
   static const char* const TAB_LABELS[TAB_COUNT];
@@ -258,8 +258,8 @@ public:
 
   bool handleInput(char c) override {
     if (_reset_menu.active) {
-      auto res = _reset_menu.handleInput(c);   // Back/Cancel dismisses; the only item is "Reset counters"
-      if (res == PopupMenu::SELECTED) {
+      auto res = _reset_menu.handleInput(c);
+      if (res == PopupMenu::SELECTED && _reset_menu.selectedIndex() == 0) {
         the_mesh.resetStats();     // zeroes Dispatcher per-type counters + Mesh forward count + err flags
         radio_driver.resetStats(); // zeroes the radio's own counters, incl. RXPS watchdog soft/hard counts
         _task->showAlert("Counters reset", 800);
@@ -271,8 +271,7 @@ public:
     if (c == KEY_UP)   { if (_scroll > 0) _scroll--; return true; }
     if (c == KEY_DOWN) { _scroll++; return true; }   // clamped in render()
     if (c == KEY_CONTEXT_MENU && _tab == TAB_LIVE) {   // Hold Enter — reset the live counters
-      _reset_menu.begin("Diagnostics", 1);
-      _reset_menu.addItem("Reset counters");
+      _reset_menu.beginConfirm("Reset counters?", "Reset");
       return true;
     }
     if (c == KEY_CANCEL) { _task->gotoToolsScreen(); return true; }
