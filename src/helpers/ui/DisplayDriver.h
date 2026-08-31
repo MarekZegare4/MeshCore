@@ -14,7 +14,15 @@ protected:
   // Only one row/label can be "selected" at a time across the whole UI, so one
   // slot of state (rather than per-caller) is enough, and keeps every call
   // site down to passing a bool.
-  char _marquee_text[64] = {0};
+  // Matches temp_str/window's own cap in drawTextEllipsized() below: this is
+  // only ever compared against that buffer (see is_new) to detect a text/width
+  // change, and a shorter cap here made a plain strcmp() see a mismatch at the
+  // truncation point on every single frame for any text past that length --
+  // "is_new" stuck true forever, so the marquee reset to its start position
+  // every call and never actually scrolled. Long message-preview rows (not
+  // just short labels/names) hit this once selected-row scrolling started
+  // being used to read them without opening fullscreen.
+  char _marquee_text[256] = {0};
   int _marquee_max_w = -1;
   uint16_t _marquee_skip_cp = 0;
   uint16_t _marquee_max_skip_cp = 0;
