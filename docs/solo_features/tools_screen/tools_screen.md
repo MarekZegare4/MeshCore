@@ -532,7 +532,7 @@ Navigate with **UP/DOWN**; change a value with **LEFT/RIGHT** (or **Enter** for 
 
 | Setting        | Options         | Notes                                                                                                          |
 | -------------- | --------------- | -------------------------------------------------------------------------------------------------------------- |
-| Repeater       | ON / OFF        | Master switch. The options below appear only while it is ON.                                                    |
+| Repeater       | ON / OFF        | Master switch. The options below are always visible, so the profile and filters can be set up before switching it on. |
 | Network        | Current / Custom | **Custom** _(default)_: enabling the repeater switches to a dedicated profile (below), disabling restores the companion's settings. A never-configured device seeds Custom from your own network's band (433/868/915 MHz region), not a flat default, so it can't land outside what's legal for your region. **Current**: relay on the companion's own frequency — opt-in, not the community norm. |
 | Preset         | named presets   | _(Custom only)_ **Enter** picks a community/saved preset for the repeater profile. |
 | Freq           | chip range      | _(Custom only)_ **Enter** opens the digit-by-digit editor (chip-validated bounds). |

@@ -50,10 +50,14 @@ class RepeaterScreen : public UIScreen {
     return { &p->repeater_freq, &p->repeater_bw, &p->repeater_sf, &p->repeater_cr };
   }
 
+  // Shown regardless of the Repeater ON/OFF row itself -- these are plain
+  // NodePrefs settings, no different from Bot's per-target rows or Live
+  // Share's move/gap/heartbeat, so they stay configurable (and visible) while
+  // off rather than forcing an enable/configure/maybe-disable-again dance.
   void buildItems(NodePrefs* p) {
     _item_count = 0;
     _items[_item_count++] = IT_REPEATER;
-    if (p && p->client_repeat) {
+    if (p) {
       _items[_item_count++] = IT_NETWORK;
       if (p->repeater_use_profile) {
         _items[_item_count++] = IT_RPRESET;
