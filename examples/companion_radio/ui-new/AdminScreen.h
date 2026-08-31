@@ -138,11 +138,12 @@ class AdminScreen : public UIScreen {
   FullscreenMsgView _reply_view;
   char _reply_text[200] = "";
 
-  // "Start OTA" confirmation -- pulls the remote out of the mesh into BLE DFU
-  // mode for the duration of the update, far more disruptive than the other
-  // one-shot actions on this tab, so unlike Reboot it doesn't fire on a bare
-  // Enter. Only this one action needs a confirm today, so it's special-cased
-  // in activateField() by command string rather than adding a generic
+  // "Start OTA" and "Reboot" confirmation -- both take the remote out of
+  // action for a while (OTA into BLE DFU mode, reboot just offline for a
+  // few seconds) with no way to intervene if something goes wrong on an
+  // unattended node, unlike the other one-shot actions on this tab. Only
+  // these two need a confirm today, so they're special-cased in
+  // activateField() by command string rather than adding a generic
   // needs_confirm flag to every AdminField literal below.
   PopupMenu _confirm;
   const AdminField* _pending_confirm_field = nullptr;
@@ -239,6 +240,11 @@ class AdminScreen : public UIScreen {
       if (!strcmp(f.get_cmd, "start ota")) {                         // see _confirm's comment
         _pending_confirm_field = &f;
         _confirm.beginConfirm("Start OTA update?", "Start");
+        return;
+      }
+      if (!strcmp(f.get_cmd, "reboot")) {                            // see _confirm's comment
+        _pending_confirm_field = &f;
+        _confirm.beginConfirm("Reboot node?", "Reboot");
         return;
       }
       strncpy(_cmd_text, f.get_cmd, sizeof(_cmd_text) - 1);
@@ -704,7 +710,7 @@ const AdminScreen::AdminField AdminScreen::ACTION_FIELDS[] = {
   { "Send advert",          "advert",         nullptr },
   { "Send zero-hop advert", "advert.zerohop", nullptr },
   { "Sync clock",           "clock sync",     nullptr },
-  { "Reboot",               "reboot",         nullptr },  // disruptive + no confirm: keep off the default row
+  { "Reboot",               "reboot",         nullptr },  // confirmed first -- see _confirm's comment
   { "Start OTA",            "start ota",      nullptr },  // confirmed first -- see _confirm's comment
   { "Custom command...",    nullptr,          nullptr },
 };
