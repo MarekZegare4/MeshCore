@@ -25,13 +25,13 @@ Filter by category with **LEFT/RIGHT** (one coherent axis — type only):
 | Filter | Shows                          |
 | ------ | ------------------------------ |
 | All    | All known nodes                |
-| Fav    | Upstream-starred contacts only |
+| Fav    | Favourites only (★)            |
 | Comp   | Companion (chat) nodes         |
 | Rpt    | Repeaters                      |
 | Room   | Room servers                   |
 | Snsr   | Sensors                        |
 
-Select a node to see its coordinates, distance, bearing with cardinal direction, type, and last-heard time. A node that is **broadcasting its position** via Live Share is marked with a **♦ diamond** beside its name in the list (the same marker the map uses), and its detail shows `Sharing pos:` with the share age and whether it's DM-verified or channel-only.
+Select a node to see its coordinates, distance, bearing with cardinal direction, type, and last-heard time. A node that is **broadcasting its position** via Live Share is marked with a **♦ diamond** beside its name in the list (the same marker the map uses), and its detail shows `Sharing pos:` with the share age and whether it's DM-verified or channel-only. A **★ star** marks a favourite, which is also sorted to the top of the list unless **Settings › Contacts › Favs top** is off.
 
 **Hold Enter** opens the same **Options** menu everywhere (list and detail), in a fixed order — only the actions that apply appear:
 
@@ -41,6 +41,8 @@ Select a node to see its coordinates, distance, bearing with cardinal direction,
 | Ping                   | a public key is known for the node                                                     |
 | Save waypoint          | selected node has GPS                                                                   |
 | Set as target          | selected node has GPS **and** a public key — pins it as the active **Locator/Nav target** right away (see **Locator**) |
+| Fav: ON / OFF          | selected node is a saved contact — the same starred flag the Messages lists use, shared with the companion app |
+| Pin to dial / Unpin (slot N) | selected node is a saved contact — puts it on the [Favourites Dial](../favourites_dial/favourites_dial.md), taking the first free slot |
 | Admin                  | selected node is a saved **repeater or room server** contact — opens **Tools › Admin** for it directly (see **Admin**) |
 | Sort: Dist/Recent      | browsing stored nodes — **LEFT/RIGHT** on the row flips distance ↔ last-heard in place |
 | Discover scan / Rescan | always (live `NODE_DISCOVER_REQ` scan)                                                  |
@@ -272,7 +274,7 @@ Navigate with **UP/DOWN**, change a value with **LEFT/RIGHT** (or **Enter**); **
 | Setting | Options                          | Notes                                                                                  |
 | ------- | -------------------------------- | -------------------------------------------------------------------------------------- |
 | Alert   | ON / OFF                         | Master switch. Enabling without a target prompts you to pick one.                      |
-| Target  | none / person / waypoint         | **Enter** opens a picker — **None** first (clears the target), then **favourites** (offered even with no known position yet, so you can arm ahead of time), then any other contact with a currently-resolvable position (live-sharing *or* just last-advertised, e.g. a repeater), then waypoints; **UP/DOWN** + **Enter** to choose. **LEFT/RIGHT** quick-cycles the same set in place, including back to **None**. A person is shown with an `@` prefix, plus a compact **age tag** (e.g. `@Bob (5m)`) when the position is last-advertised rather than a live share. Shows `none` until set. |
+| Target  | none / person / waypoint         | **Enter** opens a picker — **None** first (clears the target), then **dial-pinned people** (offered even with no known position yet, so you can arm ahead of time), then any other contact with a currently-resolvable position (live-sharing *or* just last-advertised, e.g. a repeater), then waypoints; **UP/DOWN** + **Enter** to choose. **LEFT/RIGHT** quick-cycles the same set in place, including back to **None**. A person is shown with an `@` prefix, a ★ if they're a favourite, plus a compact **age tag** (e.g. `@Bob (5m)`) when the position is last-advertised rather than a live share. Shows `none` until set. |
 | Radius  | 50 / 100 / 250 / 500 m / 1 km    | Geofence size.                                                                          |
 | Mode    | Arrive / Leave / Both            | Which crossing fires the alert — entering the radius, leaving it, or both.              |
 | Beeper  | ON / OFF                         | Optional homing tone — shown only in **Arrive** / **Both** modes (see below).           |

@@ -766,3 +766,13 @@ static const uint8_t advert_icon[] = {
 0x04, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+
+// Favourite marker for a list row, on every screen that lists something
+// starrable. Reuses the Favourites page's own icon so the two read as one idea.
+// Width includes the gap that separates it from the text to its left.
+inline int favStarWidth(DisplayDriver& d) {
+  return ICON_PG_STAR.w * miniIconScale(d) + 2;
+}
+inline void drawFavStar(DisplayDriver& d, int x, int top_y) {
+  miniIconDraw(d, x, top_y, ICON_PG_STAR);
+}

@@ -280,71 +280,18 @@ class HomeScreen : public UIScreen {
   // Selected slot on the Favourites page (0..FAVOURITES_COUNT - 1).
   uint8_t _fav_sel = 0;
 
-  // Build the in-place pin picker list for an empty slot. Favourited chat
-  // contacts first (`c.flags & 0x01`), then recent DM contacts deduped
-  // against the favourites list. Up to PIN_PICKER_MAX.
-  void buildPinPicker(int slot) {
-    _pin_target_slot = slot;
-    _pin_count = 0;
-    // 1) Upstream-favourited chat contacts.
-    for (int idx = 0; _pin_count < PIN_PICKER_MAX; idx++) {
-      ContactInfo c;
-      if (!the_mesh.getContactByIdx(idx, c)) break;
-      if (c.type != ADV_TYPE_CHAT) continue;
-      if (!(c.flags & 0x01)) continue;
-      memcpy(_pin_keys[_pin_count], c.id.pub_key, NodePrefs::FAVOURITE_PREFIX_LEN);
-      DisplayDriver::translateUTF8Static(_pin_labels[_pin_count], c.name, sizeof(_pin_labels[_pin_count]));
-      _pin_count++;
-    }
-    // 2) Recent DM contacts (deduped).
-    uint8_t recent[PIN_PICKER_MAX][NodePrefs::FAVOURITE_PREFIX_LEN];
-    int rn = _task->getRecentDMContacts(recent, PIN_PICKER_MAX);
-    for (int i = 0; i < rn && _pin_count < PIN_PICKER_MAX; i++) {
-      bool dup = false;
-      for (int j = 0; j < _pin_count; j++)
-        if (memcmp(_pin_keys[j], recent[i], NodePrefs::FAVOURITE_PREFIX_LEN) == 0) { dup = true; break; }
-      if (dup) continue;
-      for (int idx = 0; ; idx++) {
-        ContactInfo c;
-        if (!the_mesh.getContactByIdx(idx, c)) break;
-        if (memcmp(c.id.pub_key, recent[i], NodePrefs::FAVOURITE_PREFIX_LEN) == 0) {
-          memcpy(_pin_keys[_pin_count], recent[i], NodePrefs::FAVOURITE_PREFIX_LEN);
-          DisplayDriver::translateUTF8Static(_pin_labels[_pin_count], c.name, sizeof(_pin_labels[_pin_count]));
-          _pin_count++;
-          break;
-        }
-      }
-    }
-    // 3) Fallback: all remaining chat contacts not already in the list.
-    if (_pin_count == 0) {
-      for (int idx = 0; _pin_count < PIN_PICKER_MAX; idx++) {
-        ContactInfo c;
-        if (!the_mesh.getContactByIdx(idx, c)) break;
-        if (c.type != ADV_TYPE_CHAT) continue;
-        bool dup = false;
-        for (int j = 0; j < _pin_count; j++)
-          if (memcmp(_pin_keys[j], c.id.pub_key, NodePrefs::FAVOURITE_PREFIX_LEN) == 0) { dup = true; break; }
-        if (dup) continue;
-        memcpy(_pin_keys[_pin_count], c.id.pub_key, NodePrefs::FAVOURITE_PREFIX_LEN);
-        DisplayDriver::translateUTF8Static(_pin_labels[_pin_count], c.name, sizeof(_pin_labels[_pin_count]));
-        _pin_count++;
-      }
-    }
-    if (_pin_count == 0) {
-      _task->showAlert("No contacts", 1000);
-      _pin_target_slot = -1;
-      return;
-    }
-    _pin_menu.begin("Pick contact", 3);
-    for (int i = 0; i < _pin_count; i++) _pin_menu.addItem(_pin_labels[i]);
+  // Slot payload (pubkey prefix, or channel index in byte 0 — see the slot's
+  // kind), or nullptr when the slot is empty.
+  const uint8_t* favSlotPrefix(int slot) const {
+    NodePrefs* p = _task->getNodePrefs();
+    if (!p || _task->isFavouriteSlotEmpty(slot)) return nullptr;
+    return p->favourite_contacts[slot];
   }
 
-  // In-place pin picker (opens when Enter hits an empty Favourites tile).
-  static const int PIN_PICKER_MAX = 12;
-  PopupMenu _pin_menu;
-  uint8_t   _pin_keys[PIN_PICKER_MAX][NodePrefs::FAVOURITE_PREFIX_LEN];
-  char      _pin_labels[PIN_PICKER_MAX][22];
-  int       _pin_count = 0;
+  // Unpin/Replace menu for a filled tile. Choosing what to pin is the Messages
+  // screen's job (see UITask::pickFavouriteTarget) -- the dial doesn't carry a
+  // second browser for contacts, rooms and channels.
+  PopupMenu _tile_menu;
   int       _pin_target_slot = -1;
 
   UITask* _task;
@@ -1160,41 +1107,47 @@ public:
         bool sel = (i == _fav_sel);
         display.drawSelectionRow(cx, cy, cell_w - 1, cell_h - 1, sel);
 
-        // Empty slot → all-zero prefix. Real keys collide with this with probability 2^-48.
-        const uint8_t* prefix = _node_prefs ? _node_prefs->favourite_contacts[i] : nullptr;
-        bool filled = false;
-        if (prefix) {
-          for (uint8_t b = 0; b < NodePrefs::FAVOURITE_PREFIX_LEN; b++)
-            if (prefix[b] != 0) { filled = true; break; }
-        }
+        const uint8_t* prefix = favSlotPrefix(i);
+        char    name[26];
+        uint8_t unread   = 0;
+        bool    resolved = false;
 
-        ContactInfo ci;
-        bool has_contact = false;
-        if (filled) {
+        if (prefix && _task->favouriteSlotKind(i) == NodePrefs::FAV_KIND_CHANNEL) {
+          uint8_t ch_idx = prefix[0];
+          ChannelDetails ch;
+          if (the_mesh.getChannel(ch_idx, ch) && ch.name[0]) {
+            // '#' marks a channel apart from a contact tile — the two share the
+            // grid and Enter does something different on each.
+            name[0] = '#';
+            display.translateUTF8ToBlocks(name + 1, ch.name, sizeof(name) - 1);
+            unread   = _task->getChannelUnread(ch_idx);
+            resolved = true;
+          }
+        } else if (prefix) {
           for (int idx = 0; ; idx++) {
             ContactInfo c;
             if (!the_mesh.getContactByIdx(idx, c)) break;
             if (memcmp(c.id.pub_key, prefix, NodePrefs::FAVOURITE_PREFIX_LEN) == 0) {
-              ci = c; has_contact = true; break;
+              display.translateUTF8ToBlocks(name, c.name, sizeof(name));
+              unread   = _task->getDMUnread(c.id.pub_key);
+              resolved = true;
+              break;
             }
-          }
-          if (!has_contact && _node_prefs) {
-            // Pinned contact is gone — prefs outlived the contact list (e.g. a
-            // wiped /contacts3; onContactRemoved only catches a live delete).
-            // Clear the stale slot so it renders as an empty "+" tile (below)
-            // instead of "(gone)". Persisted once after the loop.
-            memset(_node_prefs->favourite_contacts[i], 0, NodePrefs::FAVOURITE_PREFIX_LEN);
-            fav_changed = true;
           }
         }
 
-        if (has_contact) {
-          char name[24];
-          display.translateUTF8ToBlocks(name, ci.name, sizeof(name));
+        if (prefix && !resolved) {
+          // The pinned target is gone — prefs outlived the contact/channel list
+          // (e.g. a wiped /contacts3; onContactRemoved/onChannelRemoved only
+          // catch a live delete). Clear the stale slot so it renders as an empty
+          // "+" tile instead of a blank one. Persisted once after the loop.
+          _task->clearFavouriteSlot(i);
+          fav_changed = true;
+        }
 
+        if (resolved) {
           // Reserve space for the unread badge so the name's ellipsis lands
           // before it instead of underneath. Badge and name share one baseline.
-          uint8_t unread = _task->getDMUnread(ci.id.pub_key);
           int  bw = unread > 0 ? display.unreadBadgeWidth(unread) + 3 : 0;  // badge + 3 px gap
           int name_y     = cy + (cell_h - line_h) / 2;
           int name_max_w = cell_w - 4 - bw;
@@ -1213,7 +1166,7 @@ public:
       // several gone tiles but only one flash write is needed. Self-healing: once
       // cleared, the slot is empty next frame so this can't re-fire per frame.
       if (fav_changed) the_mesh.savePrefs();
-      if (_pin_menu.active) _pin_menu.render(display);
+      if (_tile_menu.active) _tile_menu.render(display);
     } else if (_page == HomePage::SHUTDOWN) {
       display.setColor(DisplayDriver::LIGHT);
       display.setTextSize(1);
@@ -1262,21 +1215,18 @@ public:
     // left column and RIGHT at the right column fall through to page nav so the
     // user can still leave the page sideways.
     if (_page == HomePage::FAVOURITES) {
-      // Pin picker consumes all input while open.
-      if (_pin_menu.active) {
-        auto res = _pin_menu.handleInput(c);
+      // The tile menu consumes all input while open.
+      if (_tile_menu.active) {
+        auto res = _tile_menu.handleInput(c);
         if (res == PopupMenu::SELECTED && _pin_target_slot >= 0) {
-          int idx = _pin_menu.selectedIndex();
-          if (idx >= 0 && idx < _pin_count) {
-            // If this contact is already pinned elsewhere, vacate that slot first.
-            int existing = _task->findFavouriteSlot(_pin_keys[idx]);
-            if (existing >= 0 && existing != _pin_target_slot) _task->clearFavouriteSlot(existing);
-            _task->setFavouriteSlot(_pin_target_slot, _pin_keys[idx]);
-            the_mesh.savePrefs();
-            char alert[24];
-            snprintf(alert, sizeof(alert), "Pinned to slot %d", _pin_target_slot + 1);
-            _task->showAlert(alert, 800);
+          if (_tile_menu.selectedIndex() == 1) {          // Replace
+            _task->pickFavouriteTarget(_pin_target_slot);
+            _pin_target_slot = -1;
+            return true;
           }
+          _task->clearFavouriteSlot(_pin_target_slot);
+          the_mesh.savePrefs();
+          _task->showAlert("Unpinned", 800);
         }
         if (res != PopupMenu::NONE) _pin_target_slot = -1;
         return true;
@@ -1290,29 +1240,37 @@ public:
       if ((c == KEY_RIGHT || c == KEY_NEXT) && col < cols - 1) { _fav_sel++;        return true; }
       if (c == KEY_UP    && row > 0)                            { _fav_sel -= cols; return true; }
       if (c == KEY_DOWN  && row < rows - 1)                     { _fav_sel += cols; return true; }
-      if (c == KEY_ENTER) {
-        // Filled slot → open the DM directly. Empty slot waits for phase 3
-        // (mini-picker); for now show the pin hint.
-        NodePrefs* p = _task->getNodePrefs();
-        const uint8_t* pfx = (p && _fav_sel < NodePrefs::FAVOURITES_COUNT)
-                             ? p->favourite_contacts[_fav_sel] : nullptr;
-        bool filled = false;
-        if (pfx) for (uint8_t b = 0; b < NodePrefs::FAVOURITE_PREFIX_LEN; b++)
-          if (pfx[b]) { filled = true; break; }
-        if (filled) {
-          for (int idx = 0; ; idx++) {
-            ContactInfo c2;
-            if (!the_mesh.getContactByIdx(idx, c2)) break;
-            if (memcmp(c2.id.pub_key, pfx, NodePrefs::FAVOURITE_PREFIX_LEN) == 0) {
-              _task->openContactDM(c2);
-              return true;
-            }
-          }
-          _task->showAlert("Contact not found", 800);
-        } else {
-          // Empty slot → open in-place pin picker.
-          buildPinPicker(_fav_sel);
+      if (c == KEY_CONTEXT_MENU) {
+        // Filled tile → Unpin / Replace. An empty tile has nothing to offer:
+        // its Enter already opens the picker.
+        if (favSlotPrefix(_fav_sel)) {
+          _pin_target_slot = _fav_sel;
+          _tile_menu.begin("Slot options", 2);
+          _tile_menu.addItem("Unpin");
+          _tile_menu.addItem("Replace");
         }
+        return true;
+      }
+      if (c == KEY_ENTER) {
+        // Filled slot → open its conversation, empty slot → in-place pin picker.
+        const uint8_t* pfx = favSlotPrefix(_fav_sel);
+        if (!pfx) { _task->pickFavouriteTarget(_fav_sel); return true; }
+        if (_task->favouriteSlotKind(_fav_sel) == NodePrefs::FAV_KIND_CHANNEL) {
+          _task->openChannelHistory(pfx[0]);
+          return true;
+        }
+        for (int idx = 0; ; idx++) {
+          ContactInfo c2;
+          if (!the_mesh.getContactByIdx(idx, c2)) break;
+          if (memcmp(c2.id.pub_key, pfx, NodePrefs::FAVOURITE_PREFIX_LEN) == 0) {
+            // A room opens through its own entry point: posting to one needs a
+            // login handshake that a plain DM view would skip.
+            if (c2.type == ADV_TYPE_ROOM) _task->openRoomServer(c2);
+            else                          _task->openContactDM(c2);
+            return true;
+          }
+        }
+        _task->showAlert("Contact not found", 800);
         return true;
       }
       // Edge LEFT/RIGHT and unhandled keys fall through to page nav below.
@@ -1742,6 +1700,18 @@ void UITask::openContactDM(const ContactInfo& ci) {
   setCurrScreen(messages_screen);
 }
 
+void UITask::openChannelHistory(uint8_t channel_idx) {
+  ((MessagesScreen*)messages_screen)->reset();
+  ((MessagesScreen*)messages_screen)->enterChannel(channel_idx);
+  setCurrScreen(messages_screen);
+}
+
+void UITask::openRoomServer(const ContactInfo& ci) {
+  ((MessagesScreen*)messages_screen)->reset();
+  ((MessagesScreen*)messages_screen)->enterRoom(ci);
+  setCurrScreen(messages_screen);
+}
+
 void UITask::shareToMessage(const char* text) {
   ((MessagesScreen*)messages_screen)->startShare(text);
   setCurrScreen(messages_screen);
@@ -1749,6 +1719,11 @@ void UITask::shareToMessage(const char* text) {
 
 void UITask::pickLocShareTarget() {
   ((MessagesScreen*)messages_screen)->startPickTarget();
+  setCurrScreen(messages_screen);
+}
+
+void UITask::pickFavouriteTarget(int slot) {
+  ((MessagesScreen*)messages_screen)->startPickFavourite(slot);
   setCurrScreen(messages_screen);
 }
 
@@ -1760,10 +1735,6 @@ void UITask::pickBotChannelTarget() {
 void UITask::pickBotRoomTarget() {
   ((MessagesScreen*)messages_screen)->startPickBotRoom();
   setCurrScreen(messages_screen);
-}
-
-int UITask::getRecentDMContacts(uint8_t out[][NodePrefs::FAVOURITE_PREFIX_LEN], int max) const {
-  return ((MessagesScreen*)messages_screen)->getRecentDMContacts(out, max);
 }
 
 int UITask::addChannelMsg(uint8_t channel_idx, const char* text, uint32_t timestamp,
@@ -1778,6 +1749,10 @@ void UITask::armChannelRelay(int pos, uint32_t seq) {
 
 int UITask::getChannelUnreadCount() const {
   return ((MessagesScreen*)messages_screen)->getTotalChannelUnread();
+}
+
+uint8_t UITask::getChannelUnread(uint8_t channel_idx) const {
+  return ((MessagesScreen*)messages_screen)->chUnread(channel_idx);
 }
 
 void UITask::onMsgAck(uint32_t ack_crc) {
@@ -2951,7 +2926,7 @@ void UITask::onContactRemoved(const uint8_t* pub_key) {
 // so a channel re-added at a freed slot can't inherit the old one's settings.
 // If you add such a field, add its cleanup below (and mark it in NodePrefs.h).
 // Currently covered: bot_channel_idx, loc_share_channel_idx, ch_notif_melody_*,
-// ch_notif_override/ch_notif_muted, ch_fav_bitmask.
+// ch_notif_override/ch_notif_muted, ch_fav_bitmask, favourite_contacts/_kinds.
 void UITask::onChannelRemoved(uint8_t channel_idx) {
   if (!_node_prefs) return;
   bool changed = false;
@@ -2980,6 +2955,8 @@ void UITask::onChannelRemoved(uint8_t channel_idx) {
     _node_prefs->ch_fav_bitmask &= ~mask;
     changed = true;
   }
+  int fav_slot = findFavouriteChannelSlot(channel_idx);
+  if (fav_slot >= 0) { clearFavouriteSlot(fav_slot); changed = true; }
 
   if (changed) the_mesh.savePrefs();
 }

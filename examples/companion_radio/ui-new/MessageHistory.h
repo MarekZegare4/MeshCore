@@ -381,29 +381,6 @@ public:
   // Recent DM contacts, newest first, deduped. Resolves the 4-byte _dm_hist
   // prefix to a 6-byte pub_key prefix by walking the contact list once per
   // unique sender. Returns the number filled.
-  int getRecentDMContacts(uint8_t out[][NodePrefs::FAVOURITE_PREFIX_LEN], int max) const {
-    int n = 0;
-    for (int i = _dm_hist_count - 1; i >= 0 && n < max; i--) {
-      int pos = (_dm_hist_head + i) % DM_HIST_MAX;
-      const uint8_t* p4 = _dm_hist[pos].prefix;
-      // Skip if already collected.
-      bool dup = false;
-      for (int j = 0; j < n; j++) if (memcmp(out[j], p4, 4) == 0) { dup = true; break; }
-      if (dup) continue;
-      // Find a real contact whose pub_key starts with this 4-byte prefix.
-      for (int idx = 0; ; idx++) {
-        ContactInfo c;
-        if (!the_mesh.getContactByIdx(idx, c)) break;
-        if (memcmp(c.id.pub_key, p4, 4) == 0) {
-          memcpy(out[n], c.id.pub_key, NodePrefs::FAVOURITE_PREFIX_LEN);
-          n++;
-          break;
-        }
-      }
-    }
-    return n;
-  }
-
   DmHistEntry&       dmAtPos(int pos)       { return _dm_hist[pos]; }
   const DmHistEntry& dmAtPos(int pos) const { return _dm_hist[pos]; }
 

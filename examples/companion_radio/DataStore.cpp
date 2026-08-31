@@ -593,6 +593,22 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
   rd(_prefs.repeat_extra_scopes, sizeof(_prefs.repeat_extra_scopes));
   _prefs.repeat_extra_scopes[sizeof(_prefs.repeat_extra_scopes) - 1] = '\0';
 
+  // → 0xC0DE0028: append favourite_kinds. A pre-0x28 file has that file's own
+  // 4-byte sentinel tail sitting here, so the first slots read back as 0x27/
+  // 0x00/0xDE/0xC0 — clamp anything unknown to CONTACT, which is what every
+  // slot saved before this bump actually was.
+  rd(_prefs.favourite_kinds, sizeof(_prefs.favourite_kinds));
+  for (uint8_t i = 0; i < NodePrefs::FAVOURITES_COUNT; i++) {
+    if (_prefs.favourite_kinds[i] > NodePrefs::FAV_KIND_MAX)
+      _prefs.favourite_kinds[i] = NodePrefs::FAV_KIND_CONTACT;
+  }
+
+  // → 0xC0DE0029: append fav_sort_off. Inverted (see NodePrefs), so both a
+  // pre-0x29 file's stray sentinel byte here and a file that ends before this
+  // field clamp/zero to 0 = favourites on top, which is the default.
+  rd(&_prefs.fav_sort_off, sizeof(_prefs.fav_sort_off));
+  if (_prefs.fav_sort_off > 1) _prefs.fav_sort_off = 0;
+
   // Schema sentinel: bumped on layout changes. Mismatch means an older file
   // (or a different schema); rd() already zero-inits any fields not present,
   // so we just log it — next savePrefs writes the current sentinel.
@@ -810,6 +826,8 @@ void DataStore::savePrefs(const NodePrefs& _prefs, double node_lat, double node_
     file.write((uint8_t *)&_prefs.cad_enabled, sizeof(_prefs.cad_enabled));
     file.write((uint8_t *)&_prefs.repeat_scope_only,  sizeof(_prefs.repeat_scope_only));
     file.write((uint8_t *)_prefs.repeat_extra_scopes, sizeof(_prefs.repeat_extra_scopes));
+    file.write((uint8_t *)_prefs.favourite_kinds, sizeof(_prefs.favourite_kinds));
+    file.write((uint8_t *)&_prefs.fav_sort_off, sizeof(_prefs.fav_sort_off));
 
     // Tail sentinel — must be last. See NodePrefs::SCHEMA_SENTINEL. Its write is
     // the one we check: once the flash fills, writes return 0, so a good

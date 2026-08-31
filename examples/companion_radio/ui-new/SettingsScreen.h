@@ -81,7 +81,7 @@ class SettingsScreen : public UIScreen {
     KEYBOARD_CARDKB_COMPACT,
 #endif
     // Contacts section
-    SECTION_CONTACTS, DM_FILTER, CH_FILTER, ROOM_FILTER,
+    SECTION_CONTACTS, DM_FILTER, CH_FILTER, ROOM_FILTER, FAV_SORT,
     // Messages section
     SECTION_MESSAGES,
     DM_RESEND,
@@ -659,17 +659,21 @@ class SettingsScreen : public UIScreen {
         display.print(EINK_FULL_REFRESH_LABELS[idx]); }
 #endif
     } else if (item == DM_FILTER) {
-      display.print("DM");
+      display.print("DMs");
       display.setCursor(valCol(display), y);
-      display.print((p && p->dm_show_all) ? "all" : "fav");
+      display.print((p && p->dm_show_all) ? "All" : "Fav");
     } else if (item == CH_FILTER) {
       display.print("Channels");
       display.setCursor(valCol(display), y);
-      display.print((p && p->ch_fav_only) ? "fav" : "all");
+      display.print((p && p->ch_fav_only) ? "Fav" : "All");
     } else if (item == ROOM_FILTER) {
       display.print("Rooms");
       display.setCursor(valCol(display), y);
-      display.print((p && p->room_fav_only) ? "fav" : "all");
+      display.print((p && p->room_fav_only) ? "Fav" : "All");
+    } else if (item == FAV_SORT) {
+      display.print("Favs top");
+      display.setCursor(valCol(display), y);
+      display.print((p && p->fav_sort_off) ? "OFF" : "ON");
     } else if (item == DM_RESEND) {
       display.print("Resend");
       display.setCursor(valCol(display), y);
@@ -1099,6 +1103,11 @@ public:
     }
     if (_selected == ROOM_FILTER && p && (left || right || enter)) {
       p->room_fav_only = p->room_fav_only ? 0 : 1;
+      _dirty = true;
+      return true;
+    }
+    if (_selected == FAV_SORT && p && (left || right || enter)) {
+      p->fav_sort_off = p->fav_sort_off ? 0 : 1;
       _dirty = true;
       return true;
     }

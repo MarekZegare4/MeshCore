@@ -276,12 +276,14 @@ public:
   void gotoSettingsScreen();
   void gotoMessagesScreen();
   void openContactDM(const ContactInfo& ci);
+  void openChannelHistory(uint8_t channel_idx);   // Favourites dial: open a pinned channel
+  void openRoomServer(const ContactInfo& ci);     // Favourites dial: open a pinned room (logs in first)
   void shareToMessage(const char* text);   // open Messages pre-loaded to share `text`
   void quickShareMyLocation();             // Home Map Hold-Enter: one-shot position share
   void pickLocShareTarget();               // open Messages to choose the live-share target
+  void pickFavouriteTarget(int slot);       // open Messages to fill a Favourites dial slot
   void pickBotChannelTarget();             // open Messages to choose the auto-reply bot's channel
   void pickBotRoomTarget();                // open Messages to choose the auto-reply bot's room
-  int  getRecentDMContacts(uint8_t out[][NodePrefs::FAVOURITE_PREFIX_LEN], int max) const;
   void gotoToolsScreen();
   void gotoRingtoneEditor(int slot = 0);
   void gotoBotScreen();
@@ -399,6 +401,7 @@ public:
   int  getDMUnreadTotal() const;
   int  getMsgCount() const { return _msgcount; }
   int  getChannelUnreadCount() const;
+  uint8_t getChannelUnread(uint8_t channel_idx) const;
   int  getRoomUnreadCount() const { return _room_unread; }
   void clearRoomUnread() { _room_unread = 0; }
   // Clamped to the DM ring's actual occupancy for this contact -- defined in
@@ -429,10 +432,17 @@ public:
   void clearPing();
   void handlePingResult(uint32_t tag, int16_t snr_out_x4, int16_t snr_back_x4, uint32_t rtt_ms);
 
-  // Favourites dial helpers. Slot index 0..FAVOURITES_COUNT-1.
+  // Favourites dial helpers. Slot index 0..FAVOURITES_COUNT-1. A slot holds
+  // either a contact/room (pubkey prefix) or a channel (index), per
+  // favourite_kinds[] — see NodePrefs.
+  uint8_t favouriteSlotKind(int slot) const {
+    if (!_node_prefs || slot < 0 || slot >= NodePrefs::FAVOURITES_COUNT) return NodePrefs::FAV_KIND_CONTACT;
+    return _node_prefs->favourite_kinds[slot];
+  }
   int findFavouriteSlot(const uint8_t* pub_key) const {
     if (!_node_prefs || !pub_key) return -1;
     for (int i = 0; i < NodePrefs::FAVOURITES_COUNT; i++) {
+      if (_node_prefs->favourite_kinds[i] != NodePrefs::FAV_KIND_CONTACT) continue;
       if (memcmp(_node_prefs->favourite_contacts[i], pub_key, NodePrefs::FAVOURITE_PREFIX_LEN) == 0) {
         // All-zero prefix is "empty" — never matches a real key.
         bool any = false;
@@ -443,8 +453,18 @@ public:
     }
     return -1;
   }
+  int findFavouriteChannelSlot(uint8_t ch_idx) const {
+    if (!_node_prefs) return -1;
+    for (int i = 0; i < NodePrefs::FAVOURITES_COUNT; i++) {
+      if (_node_prefs->favourite_kinds[i] == NodePrefs::FAV_KIND_CHANNEL &&
+          _node_prefs->favourite_contacts[i][0] == ch_idx) return i;
+    }
+    return -1;
+  }
   bool isFavouriteSlotEmpty(int slot) const {
     if (!_node_prefs || slot < 0 || slot >= NodePrefs::FAVOURITES_COUNT) return true;
+    // A channel slot is never empty: channel 0's prefix is all zeroes.
+    if (_node_prefs->favourite_kinds[slot] == NodePrefs::FAV_KIND_CHANNEL) return false;
     for (uint8_t b = 0; b < NodePrefs::FAVOURITE_PREFIX_LEN; b++)
       if (_node_prefs->favourite_contacts[slot][b]) return false;
     return true;
@@ -452,10 +472,18 @@ public:
   void setFavouriteSlot(int slot, const uint8_t* pub_key) {
     if (!_node_prefs || slot < 0 || slot >= NodePrefs::FAVOURITES_COUNT || !pub_key) return;
     memcpy(_node_prefs->favourite_contacts[slot], pub_key, NodePrefs::FAVOURITE_PREFIX_LEN);
+    _node_prefs->favourite_kinds[slot] = NodePrefs::FAV_KIND_CONTACT;
+  }
+  void setFavouriteChannelSlot(int slot, uint8_t ch_idx) {
+    if (!_node_prefs || slot < 0 || slot >= NodePrefs::FAVOURITES_COUNT) return;
+    memset(_node_prefs->favourite_contacts[slot], 0, NodePrefs::FAVOURITE_PREFIX_LEN);
+    _node_prefs->favourite_contacts[slot][0] = ch_idx;
+    _node_prefs->favourite_kinds[slot] = NodePrefs::FAV_KIND_CHANNEL;
   }
   void clearFavouriteSlot(int slot) {
     if (!_node_prefs || slot < 0 || slot >= NodePrefs::FAVOURITES_COUNT) return;
     memset(_node_prefs->favourite_contacts[slot], 0, NodePrefs::FAVOURITE_PREFIX_LEN);
+    _node_prefs->favourite_kinds[slot] = NodePrefs::FAV_KIND_CONTACT;
   }
   bool isButtonPressed() const;
 

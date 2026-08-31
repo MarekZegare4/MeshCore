@@ -62,10 +62,17 @@ class MessagesScreen : public UIScreen {
   char      _ctx_notif_item[22];
   char      _ctx_melody_item[20];
   char      _ctx_pin_item[28];   // "Pin to dial" or "Unpin (slot N)"
-  char      _ctx_ch_fav_item[12]; // "Fav" or "Unfav"
+  char      _ctx_fav_item[12]; // "Fav: ON" / "Fav: OFF" — shared by the channel,
+                               // contact and room menus (never open at once)
+  int       _ctx_fav_idx = -1; // row the Fav toggle sits on, frozen at menu open
+  int       _ctx_pin_idx = -1; // ...and the Pin row, in the room menu (it sits after Fav,
+                               // whose own row depends on whether Logout is shown)
   char      _pin_slot_labels[NodePrefs::FAVOURITES_COUNT][22];  // per-slot picker labels
   bool      _pin_picker_active;  // true while the slot-picker submenu is open
-  bool      _dm_direct_entry;    // entered DM_HIST via Favourites shortcut; CANCEL returns home
+  int       _pick_fav_slot = -1; // >=0 = browsing to fill that Favourites dial slot
+  int       _pin_slot_ch_idx = -1; // >=0 = that submenu is pinning this channel, not a contact
+  bool      _direct_entry;      // entered a history view straight from the Favourites dial;
+                                // CANCEL returns home instead of to the picker
   char      _reply_prefix[36];   // "@[nick] " built when reply is triggered
   bool      _reply_mode;         // true while composing a reply (prefix is prepended)
 
@@ -561,41 +568,136 @@ class MessagesScreen : public UIScreen {
     }
   }
 
+  // Fill _pin_slot_labels for the "Pick slot" submenu: each dial slot with its
+  // current occupant, contact or channel.
+  void buildSlotLabels() {
+    NodePrefs* p = _task->getNodePrefs();
+    for (int s = 0; s < NodePrefs::FAVOURITES_COUNT; s++) {
+      if (!p || _task->isFavouriteSlotEmpty(s)) {
+        snprintf(_pin_slot_labels[s], sizeof(_pin_slot_labels[s]), "Slot %d: empty", s + 1);
+        continue;
+      }
+      char nm[16] = "?";
+      const uint8_t* pfx = p->favourite_contacts[s];
+      if (_task->favouriteSlotKind(s) == NodePrefs::FAV_KIND_CHANNEL) {
+        ChannelDetails ch;
+        if (the_mesh.getChannel(pfx[0], ch) && ch.name[0]) {
+          nm[0] = '#';
+          DisplayDriver::translateUTF8Static(nm + 1, ch.name, sizeof(nm) - 1);
+        }
+      } else {
+        for (int idx = 0; ; idx++) {
+          ContactInfo c2;
+          if (!the_mesh.getContactByIdx(idx, c2)) break;
+          if (memcmp(c2.id.pub_key, pfx, NodePrefs::FAVOURITE_PREFIX_LEN) == 0) {
+            DisplayDriver::translateUTF8Static(nm, c2.name, sizeof(nm));
+            break;
+          }
+        }
+      }
+      snprintf(_pin_slot_labels[s], sizeof(_pin_slot_labels[s]), "Slot %d: %s", s + 1, nm);
+    }
+  }
+
+  void pinContactToSlot(const ContactInfo& ci, int slot) {
+    if (slot < 0 || slot >= NodePrefs::FAVOURITES_COUNT) return;
+    int existing = _task->findFavouriteSlot(ci.id.pub_key);
+    if (existing >= 0 && existing != slot) _task->clearFavouriteSlot(existing);
+    _task->setFavouriteSlot(slot, ci.id.pub_key);
+    the_mesh.savePrefs();
+    char alert[24];
+    snprintf(alert, sizeof(alert), "Pinned to slot %d", slot + 1);
+    _task->showAlert(alert, 800);
+  }
+
+  // Pin/Unpin row picked in a contact or room menu: unpins if already pinned,
+  // otherwise hands the menu over to the slot picker.
+  void pinContactAction(const ContactInfo& ci) {
+    int pinned_slot = _task->findFavouriteSlot(ci.id.pub_key);
+    if (pinned_slot >= 0) {
+      _task->clearFavouriteSlot(pinned_slot);
+      the_mesh.savePrefs();
+      char alert[24];
+      snprintf(alert, sizeof(alert), "Unpinned (slot %d)", pinned_slot + 1);
+      _task->showAlert(alert, 800);
+      return;
+    }
+    buildSlotLabels();
+    _ctx_menu.begin("Pick slot", 3);
+    for (int s = 0; s < NodePrefs::FAVOURITES_COUNT; s++) _ctx_menu.addItem(_pin_slot_labels[s]);
+    _pin_slot_ch_idx = -1;   // pinning a contact, not a channel
+    _pin_picker_active = true;
+  }
+
+  void pinChannelToSlot(uint8_t ch_idx, int slot) {
+    if (slot < 0 || slot >= NodePrefs::FAVOURITES_COUNT) return;
+    int existing = _task->findFavouriteChannelSlot(ch_idx);
+    if (existing >= 0 && existing != slot) _task->clearFavouriteSlot(existing);
+    _task->setFavouriteChannelSlot(slot, ch_idx);
+    the_mesh.savePrefs();
+    char alert[24];
+    snprintf(alert, sizeof(alert), "Pinned to slot %d", slot + 1);
+    _task->showAlert(alert, 800);
+  }
+
+  // Posting to a room requires a login handshake first (even with a blank
+  // password), so get one under way instead of opening a history view that
+  // would silently fail to send. Targets _sel_contact.
+  void requireRoomLogin() {
+    char saved_pw[sizeof(_login_pw)];
+    if (the_mesh.getRoomPassword(_sel_contact.id.pub_key, saved_pw, sizeof(saved_pw))) {
+      // Logged in to this room before, on an earlier boot -- retry with the
+      // remembered password instead of prompting again.
+      startRoomLogin(saved_pw);
+      return;
+    }
+    _login_mode = true;
+    _kb->begin("", 15); // room/repeater password: max 15 chars
+    _kb->clearPlaceholders();   // {loc}/{time} are for messages, not a password
+    _phase = KEYBOARD;
+  }
+
+  // Flip a contact's/room's favourite flag and refresh the menu label. The list
+  // rebuild is deferred to menu close (see the channel Fav toggle for why).
+  void toggleContactFav(const ContactInfo& ci) {
+    bool now_fav = !(ci.flags & 0x01);
+    if (!the_mesh.setContactFavourite(ci.id.pub_key, now_fav)) return;
+    snprintf(_ctx_fav_item, sizeof(_ctx_fav_item), now_fav ? "Fav: ON" : "Fav: OFF");
+  }
+
   void buildContactList() {
     NodePrefs* p = _task->getNodePrefs();
     ContactInfo c;
     int total = the_mesh.getNumContacts();
+    const bool rooms = _room_mode;
     _num_contacts = 0;
-    if (_room_mode) {
-      bool fav_only = (p && p->room_fav_only);
-      for (int i = 0; i < total; i++) {
-        if (!the_mesh.getContactByIdx(i, c) || c.type != ADV_TYPE_ROOM) continue;
-        if (fav_only && !(c.flags & 0x01)) continue;
-        _sorted[_num_contacts++] = i;
+    // Sort key per row: favourites first, then most-messaged first (DMs only).
+    // uint8_t, not int: DM history is capped at MessageHistory::DM_HIST_MAX (32),
+    // well under the 128 the favourite bit adds, and this array is 1400 B at this
+    // build's MAX_CONTACTS=350 as an int[] -- a sizeable slice of the 4 KB loop()
+    // task stack for one local array.
+    uint8_t keys[MAX_CONTACTS];
+    bool fav_only = rooms ? (p && p->room_fav_only) : !(p && p->dm_show_all);
+    for (int i = 0; i < total; i++) {
+      if (!the_mesh.getContactByIdx(i, c)) continue;
+      if (c.type != (rooms ? ADV_TYPE_ROOM : ADV_TYPE_CHAT)) continue;
+      bool fav = (c.flags & 0x01) != 0;
+      if (fav_only && !fav) continue;
+      uint8_t k = rooms ? 0 : _history.dmHistCountForContact(c.id.pub_key);
+      if (k > 127) k = 127;
+      if (fav && !(p && p->fav_sort_off)) k += 128;
+      keys[_num_contacts] = k;
+      _sorted[_num_contacts++] = i;
+    }
+    // Descending insertion sort; rows with key 0 keep their contact-table order.
+    for (int i = 1; i < _num_contacts; i++) {
+      if (keys[i] == 0) continue;
+      uint16_t idx = _sorted[i]; uint8_t k = keys[i];
+      int j = i;
+      while (j > 0 && keys[j-1] < k) {
+        _sorted[j] = _sorted[j-1]; keys[j] = keys[j-1]; j--;
       }
-    } else {
-      bool show_all = (p && p->dm_show_all);
-      // Build _sorted and counts[] in one pass — avoids a second getContactByIdx loop.
-      // uint8_t, not int: values are bounded by MessageHistory::DM_HIST_MAX (32), and
-      // this array is 1400 B at this build's MAX_CONTACTS=350 as an int[] -- a sizeable
-      // slice of the 4 KB loop() task stack for one local array.
-      uint8_t counts[MAX_CONTACTS];
-      for (int i = 0; i < total; i++) {
-        if (!the_mesh.getContactByIdx(i, c) || c.type != ADV_TYPE_CHAT) continue;
-        if (!show_all && !(c.flags & 0x01)) continue;
-        counts[_num_contacts] = _history.dmHistCountForContact(c.id.pub_key);
-        _sorted[_num_contacts++] = i;
-      }
-      // Sort by message count descending; contacts with no messages keep original order.
-      for (int i = 1; i < _num_contacts; i++) {
-        if (counts[i] == 0) continue;
-        uint16_t key = _sorted[i]; int kc = counts[i];
-        int j = i;
-        while (j > 0 && counts[j-1] < kc) {
-          _sorted[j] = _sorted[j-1]; counts[j] = counts[j-1]; j--;
-        }
-        _sorted[j] = key; counts[j] = kc;
-      }
+      _sorted[j] = idx; keys[j] = k;
     }
   }
 
@@ -609,6 +711,20 @@ class MessagesScreen : public UIScreen {
       if (fav_only && !(p->ch_fav_bitmask & (1ULL << i))) continue;
       _channel_indices[_num_channels++] = (uint8_t)i;
     }
+    // Favourites to the front, everything else keeping channel-slot order.
+    if (!p || p->fav_sort_off) return;
+    int front = 0;
+    for (int i = 0; i < _num_channels; i++) {
+      if (!chIsFav(_channel_indices[i])) continue;
+      uint8_t v = _channel_indices[i];
+      for (int j = i; j > front; j--) _channel_indices[j] = _channel_indices[j - 1];
+      _channel_indices[front++] = v;
+    }
+  }
+
+  bool chIsFav(uint8_t ch_idx) const {
+    NodePrefs* p = _task->getNodePrefs();
+    return p && (p->ch_fav_bitmask & (1ULL << ch_idx)) != 0;
   }
 
   // Returns per-channel notification state: 0=follow global, 1=muted, 2=force-on
@@ -715,7 +831,7 @@ public:
       _hist_sel(0), _hist_scroll(0),
       _unread_at_entry(0), _viewing_max_seen(0),
       _dm_hist_sel(-1), _dm_hist_scroll(0),
-      _ctx_dirty(false), _pin_picker_active(false), _dm_direct_entry(false), _reply_mode(false),
+      _ctx_dirty(false), _pin_picker_active(false), _direct_entry(false), _reply_mode(false),
       _ch_view(task) {
     // The history rings + per-channel unread counters init in MessageHistory.
   }
@@ -932,17 +1048,15 @@ public:
     _pick_bot_channel = false;
     _pick_bot_room = false;
     _pin_picker_active = false;
-    _dm_direct_entry = false;
+    _pin_slot_ch_idx = -1;
+    _pick_fav_slot = -1;
+    _direct_entry = false;
     _unread_at_entry = 0;
     _viewing_max_seen = 0;
     _ch_view.reset();
   }
 
   // Recent DM contacts, newest first, deduped (forwarded to the history store).
-  int getRecentDMContacts(uint8_t out[][NodePrefs::FAVOURITE_PREFIX_LEN], int max) const {
-    return _history.getRecentDMContacts(out, max);
-  }
-
   // Jump straight into a contact's DM history (used by the Favourites dial).
   // Caller must have already reset() the screen. Marks the entry so KEY_CANCEL
   // from DM_HIST returns to the home screen instead of falling back through
@@ -976,6 +1090,28 @@ public:
     _pick_target = false;
     _task->showAlert("Share target set", 1200);
     _task->gotoLiveShareScreen();
+  }
+
+  // Open the chooser to fill Favourites dial slot `slot`. Reuses this screen's
+  // own Direct/Channels/Rooms browse rather than the dial carrying a second
+  // picker of its own.
+  void startPickFavourite(int slot) {
+    reset();
+    _pick_fav_slot = slot;
+    _phase = MODE_SELECT;
+  }
+
+  void commitPickFavContact(const ContactInfo& ci) {
+    pinContactToSlot(ci, _pick_fav_slot);
+    _pick_fav_slot = -1;
+    _room_mode = false;
+    _task->gotoHomeScreen();
+  }
+
+  void commitPickFavChannel(int ch_idx) {
+    pinChannelToSlot((uint8_t)ch_idx, _pick_fav_slot);
+    _pick_fav_slot = -1;
+    _task->gotoHomeScreen();
   }
 
   // Open the channel chooser to set the auto-reply bot's channel. Skips
@@ -1051,8 +1187,38 @@ public:
     _dm_fs.active = false;
     _room_mode = false;
     _phase = DM_HIST;
-    _dm_direct_entry = true;
+    _direct_entry = true;
   }
+
+  // Same as enterDM, but keeps room framing on (sender-prefixed lines, room
+  // compose) and runs the login handshake a room needs before it can be posted
+  // to. Caller must have already reset() the screen.
+  void enterRoom(const ContactInfo& ci) {
+    _sel_contact = ci;
+    _task->clearDMUnread(ci.id.pub_key);
+    _dm_hist_sel = -1;
+    _dm_hist_scroll = 0;
+    _dm_fs.active = false;
+    _room_mode = true;
+    _phase = DM_HIST;
+    _direct_entry = true;
+    if (!isRoomLoggedIn(ci.id.pub_key)) requireRoomLogin();
+  }
+
+  // Open a channel's history directly (used by the Favourites dial). Caller
+  // must have already reset() the screen.
+  void enterChannel(uint8_t channel_idx) {
+    _sel_channel_idx = channel_idx;
+    _unread_at_entry = (int)_history.chUnread(channel_idx);
+    _hist_scroll = 0;
+    _hist_sel = _history.histCountForChannel(channel_idx) > 0 ? 0 : -1;
+    _viewing_max_seen = _hist_sel >= 0 ? _hist_sel : 0;
+    _fs.active = false;
+    _phase = CHANNEL_HIST;
+    _direct_entry = true;
+  }
+
+  uint8_t chUnread(uint8_t channel_idx) const { return _history.chUnread(channel_idx); }
 
   int render(DisplayDriver& display) override {
     int mq_delay = 0;   // >0 while a selected row's text is marquee-scrolling
@@ -1070,7 +1236,12 @@ public:
     int start_y = display.listStart();
 
     if (_phase == MODE_SELECT) {
-      display.drawCenteredHeader("MESSAGE", true, _ctx_menu.active);
+      // Say which dial slot is being filled -- entered from the Favourites page,
+      // a bare "MESSAGE" gives no sign that this browse is a pick.
+      char hdr[16];
+      if (_pick_fav_slot >= 0) snprintf(hdr, sizeof(hdr), "PIN SLOT %d", _pick_fav_slot + 1);
+      else                     snprintf(hdr, sizeof(hdr), "MESSAGE");
+      display.drawCenteredHeader(hdr, true, _ctx_menu.active);
       const char* opts[] = { "Direct message", "Channels", "Room Servers" };
       int badges[3] = {
         getDMUnreadTotal(),
@@ -1108,8 +1279,10 @@ public:
           display.translateUTF8ToBlocks(filtered, c.name, sizeof(filtered));
           uint8_t dm_unread = _task->getDMUnread(c.id.pub_key);
           int bw = dm_unread > 0 ? display.unreadBadgeWidth(dm_unread) + 2 : 0;
-          int r = display.drawTextEllipsized(2, y, display.width() - 2 - bw - reserve, filtered, sel);
+          int sw = (c.flags & 0x01) ? favStarWidth(display) : 0;
+          int r = display.drawTextEllipsized(2, y, display.width() - 2 - bw - sw - reserve, filtered, sel);
           if (sel && r > 0) mq_delay = r;
+          if (sw) drawFavStar(display, display.width() - reserve - bw - sw + 1, y);
           if (dm_unread > 0)
             display.drawUnreadBadge(display.width() - reserve, y, dm_unread, sel);
         }
@@ -1142,8 +1315,10 @@ public:
         if (the_mesh.getChannel(_channel_indices[list_idx], ch)) {
           uint8_t unread = _history.chUnread(_channel_indices[list_idx]);
           int bw = unread > 0 ? display.unreadBadgeWidth(unread) + 2 : 0;
-          int r = display.drawTextEllipsized(2, y, display.width() - 4 - bw - reserve, ch.name, sel);
+          int sw = chIsFav(_channel_indices[list_idx]) ? favStarWidth(display) : 0;
+          int r = display.drawTextEllipsized(2, y, display.width() - 4 - bw - sw - reserve, ch.name, sel);
           if (sel && r > 0) mq_delay = r;
+          if (sw) drawFavStar(display, display.width() - reserve - bw - sw + 1, y);
           if (unread > 0)
             display.drawUnreadBadge(display.width() - reserve, y, unread, sel);
         }
@@ -1597,7 +1772,28 @@ public:
     } else if (_phase == CONTACT_PICK) {
       // Context menu consumes all input while open
       if (_ctx_menu.active) {
+        if (_pin_picker_active) {
+          // Slot picker sub-menu: index 0..FAVOURITES_COUNT-1 maps directly to slot.
+          auto res = _ctx_menu.handleInput(c);
+          if (res == PopupMenu::SELECTED && _num_contacts > 0) {
+            ContactInfo ci;
+            if (the_mesh.getContactByIdx(_sorted[_contact_sel], ci))
+              pinContactToSlot(ci, _ctx_menu.selectedIndex());
+          }
+          if (res != PopupMenu::NONE) {
+            _pin_picker_active = false;
+            _task->savePrefsIfDirty(_ctx_dirty);   // Notif/Melody edits made before Pin was picked
+          }
+          return true;
+        }
         if (_room_mode) {
+          // LEFT/RIGHT toggle Fav in-place (menu stays open), as in the other menus.
+          if ((keyIsPrev(c) || keyIsNext(c)) && _num_contacts > 0 &&
+              _ctx_menu.selectedIndex() == _ctx_fav_idx) {
+            ContactInfo ci;
+            if (the_mesh.getContactByIdx(_sorted[_contact_sel], ci)) toggleContactFav(ci);
+            return true;
+          }
           auto res = _ctx_menu.handleInput(c);
           if (res == PopupMenu::SELECTED && _num_contacts > 0) {
             if (the_mesh.getContactByIdx(_sorted[_contact_sel], _sel_contact)) {
@@ -1607,18 +1803,27 @@ public:
                 _kb->begin("", 15); // room/repeater password: max 15 chars
                 _kb->clearPlaceholders();   // {loc}/{time} are for messages, not a password
                 _phase = KEYBOARD;
-              } else {
+              } else if (sel == _ctx_pin_idx) {
+                pinContactAction(_sel_contact);
+                if (_pin_picker_active) return true;   // rebuild below would close the submenu
+              } else if (sel != _ctx_fav_idx) {
                 // Logout: only reachable when isRoomLoggedIn() added this item.
                 the_mesh.logoutRoom(_sel_contact.id.pub_key);
                 forgetRoomLoggedIn(_sel_contact.id.pub_key);
                 _task->showAlert("Logged out", 1000);
               }
+              // Fav row: already toggled by LEFT/RIGHT, ENTER just closes.
             }
+          }
+          if (res != PopupMenu::NONE && _phase == CONTACT_PICK) {
+            // A room un-favourited under a fav-only filter drops off the list.
+            buildContactList();
+            if (_contact_sel >= _num_contacts) _contact_sel = _num_contacts > 0 ? _num_contacts - 1 : 0;
           }
           return true;
         }
         // LEFT/RIGHT cycle Notif/Melody in-place (menu stays open).
-        if (!_pin_picker_active && _num_contacts > 0) {
+        if (_num_contacts > 0) {
           bool left  = keyIsPrev(c);
           bool right = keyIsNext(c);
           if (left || right) {
@@ -1639,28 +1844,14 @@ public:
                 setDmMelody(ci.id.pub_key, v);
                 snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s", ML[v]);
                 _ctx_dirty = true;
+              } else if (sel == _ctx_fav_idx) {
+                toggleContactFav(ci);
               }
             }
             return true;
           }
         }
         auto res = _ctx_menu.handleInput(c);
-        if (_pin_picker_active) {
-          // Slot picker sub-menu: index 0..FAVOURITES_COUNT-1 maps directly to slot.
-          if (res == PopupMenu::SELECTED && _num_contacts > 0) {
-            ContactInfo ci;
-            if (the_mesh.getContactByIdx(_sorted[_contact_sel], ci)) {
-              int slot = _ctx_menu.selectedIndex();
-              _task->setFavouriteSlot(slot, ci.id.pub_key);
-              the_mesh.savePrefs();
-              char alert[24];
-              snprintf(alert, sizeof(alert), "Pinned to slot %d", slot + 1);
-              _task->showAlert(alert, 800);
-            }
-          }
-          if (res != PopupMenu::NONE) _pin_picker_active = false;
-          return true;
-        }
         if (res == PopupMenu::SELECTED && _num_contacts > 0) {
           ContactInfo ci;
           if (the_mesh.getContactByIdx(_sorted[_contact_sel], ci)) {
@@ -1669,45 +1860,20 @@ public:
               int cleared = (int)_task->getDMUnread(ci.id.pub_key);
               _task->clearDMUnread(ci.id.pub_key);
               markReadAlert(cleared);
-            } else if (sel == 3) {
-              // Pin / Unpin
-              int pinned_slot = _task->findFavouriteSlot(ci.id.pub_key);
-              if (pinned_slot >= 0) {
-                _task->clearFavouriteSlot(pinned_slot);
-                the_mesh.savePrefs();
-                char alert[24];
-                snprintf(alert, sizeof(alert), "Unpinned (slot %d)", pinned_slot + 1);
-                _task->showAlert(alert, 800);
-              } else {
-                for (int s = 0; s < NodePrefs::FAVOURITES_COUNT; s++) {
-                  if (_task->isFavouriteSlotEmpty(s)) {
-                    snprintf(_pin_slot_labels[s], sizeof(_pin_slot_labels[s]), "Slot %d: empty", s + 1);
-                  } else {
-                    char nm[16] = "?";
-                    NodePrefs* p = _task->getNodePrefs();
-                    if (p) {
-                      const uint8_t* pfx = p->favourite_contacts[s];
-                      for (int idx = 0; ; idx++) {
-                        ContactInfo c2;
-                        if (!the_mesh.getContactByIdx(idx, c2)) break;
-                        if (memcmp(c2.id.pub_key, pfx, NodePrefs::FAVOURITE_PREFIX_LEN) == 0) {
-                          DisplayDriver::translateUTF8Static(nm, c2.name, sizeof(nm));
-                          break;
-                        }
-                      }
-                    }
-                    snprintf(_pin_slot_labels[s], sizeof(_pin_slot_labels[s]), "Slot %d: %s", s + 1, nm);
-                  }
-                }
-                _ctx_menu.begin("Pick slot", 3);
-                for (int s = 0; s < NodePrefs::FAVOURITES_COUNT; s++) _ctx_menu.addItem(_pin_slot_labels[s]);
-                _pin_picker_active = true;
-              }
+            } else if (sel == 4) {
+              pinContactAction(ci);
             }
-            // sel == 1 (Notif) and sel == 2 (Melody): already cycled via LEFT/RIGHT; ENTER just closes.
+            // sel 1 (Notif), 2 (Melody), 3 (Fav): already cycled via LEFT/RIGHT; ENTER just closes.
           }
         }
-        if (res != PopupMenu::NONE) _task->savePrefsIfDirty(_ctx_dirty);
+        if (res != PopupMenu::NONE) {
+          _task->savePrefsIfDirty(_ctx_dirty);
+          if (!_pin_picker_active) {
+            // A contact un-favourited under a fav-only filter drops off the list.
+            buildContactList();
+            if (_contact_sel >= _num_contacts) _contact_sel = _num_contacts > 0 ? _num_contacts - 1 : 0;
+          }
+        }
         return true;
       }
       if (c == KEY_CANCEL) {
@@ -1722,6 +1888,7 @@ public:
       if (c == KEY_ENTER && _num_contacts > 0) {
         if (the_mesh.getContactByIdx(_sorted[_contact_sel], _sel_contact)) {
           if (_pick_target) { commitPickTargetDM(_sel_contact); return true; }
+          if (_pick_fav_slot >= 0) { commitPickFavContact(_sel_contact); return true; }
           if (_pick_bot_room) {
             if (!isRoomLoggedIn(_sel_contact.id.pub_key)) {
               char saved_pw[sizeof(_login_pw)];
@@ -1747,20 +1914,7 @@ public:
             return true;
           }
           if (_room_mode && !isRoomLoggedIn(_sel_contact.id.pub_key)) {
-            // Posting to a room requires a login handshake first (even with a
-            // blank password) — go straight to the password prompt instead of
-            // a history view that would silently fail to send.
-            char saved_pw[sizeof(_login_pw)];
-            if (the_mesh.getRoomPassword(_sel_contact.id.pub_key, saved_pw, sizeof(saved_pw))) {
-              // Logged in to this room before, on an earlier boot -- retry
-              // with the remembered password instead of prompting again.
-              startRoomLogin(saved_pw);
-            } else {
-              _login_mode = true;
-              _kb->begin("", 15); // room/repeater password: max 15 chars
-              _kb->clearPlaceholders();   // {loc}/{time} are for messages, not a password
-              _phase = KEYBOARD;
-            }
+            requireRoomLogin();
             return true;
           }
           openDmHistory();
@@ -1770,10 +1924,20 @@ public:
       }
       if (c == KEY_CONTEXT_MENU && _num_contacts > 0 && _room_mode) {
         ContactInfo ci;
-        bool logged_in = the_mesh.getContactByIdx(_sorted[_contact_sel], ci) && isRoomLoggedIn(ci.id.pub_key);
+        bool have = the_mesh.getContactByIdx(_sorted[_contact_sel], ci);
+        bool logged_in = have && isRoomLoggedIn(ci.id.pub_key);
+        snprintf(_ctx_fav_item, sizeof(_ctx_fav_item),
+                 (have && (ci.flags & 0x01)) ? "Fav: ON" : "Fav: OFF");
+        { int pinned_slot = have ? _task->findFavouriteSlot(ci.id.pub_key) : -1;
+          if (pinned_slot >= 0) snprintf(_ctx_pin_item, sizeof(_ctx_pin_item), "Unpin (slot %d)", pinned_slot + 1);
+          else                  snprintf(_ctx_pin_item, sizeof(_ctx_pin_item), "Pin to dial"); }
         _ctx_menu.begin("Room options", logged_in ? 2 : 1);
         _ctx_menu.addItem("Login...");
         if (logged_in) _ctx_menu.addItem("Logout");
+        _ctx_fav_idx = logged_in ? 2 : 1;
+        _ctx_menu.addItem(_ctx_fav_item);
+        _ctx_pin_idx = _ctx_fav_idx + 1;
+        _ctx_menu.addItem(_ctx_pin_item);
         return true;
       }
       if (c == KEY_CONTEXT_MENU && _num_contacts > 0 && !_room_mode) {
@@ -1788,10 +1952,14 @@ public:
         int pinned_slot = _task->findFavouriteSlot(ci.id.pub_key);
         if (pinned_slot >= 0) snprintf(_ctx_pin_item, sizeof(_ctx_pin_item), "Unpin (slot %d)", pinned_slot + 1);
         else                  snprintf(_ctx_pin_item, sizeof(_ctx_pin_item), "Pin to dial");
+        snprintf(_ctx_fav_item, sizeof(_ctx_fav_item),
+                 (ci.flags & 0x01) ? "Fav: ON" : "Fav: OFF");
         _ctx_menu.begin("Contact options", 3);
         _ctx_menu.addItem("Mark as read");
         _ctx_menu.addItem(_ctx_notif_item);
         _ctx_menu.addItem(_ctx_melody_item);
+        _ctx_fav_idx = 3;
+        _ctx_menu.addItem(_ctx_fav_item);
         _ctx_menu.addItem(_ctx_pin_item);
         _ctx_dirty = false;
         return true;
@@ -1801,7 +1969,7 @@ public:
       // Context menu consumes all input while open
       if (_ctx_menu.active) {
         // LEFT/RIGHT cycle Notif/Melody/Fav in-place (menu stays open).
-        if (_num_channels > 0) {
+        if (!_pin_picker_active && _num_channels > 0) {
           bool left  = keyIsPrev(c);
           bool right = keyIsNext(c);
           if (left || right) {
@@ -1821,12 +1989,12 @@ public:
               setChNotifMelody(ch_idx, v);
               snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s", ML[v]);
               _ctx_dirty = true;
-            } else if (sel == 3) {
+            } else if (sel == _ctx_fav_idx) {
               NodePrefs* p2 = _task->getNodePrefs();
               if (p2) {
                 p2->ch_fav_bitmask ^= (1ULL << ch_idx);
                 bool is_fav = (p2->ch_fav_bitmask & (1ULL << ch_idx));
-                snprintf(_ctx_ch_fav_item, sizeof(_ctx_ch_fav_item), is_fav ? "Fav: ON" : "Fav: OFF");
+                snprintf(_ctx_fav_item, sizeof(_ctx_fav_item), is_fav ? "Fav: ON" : "Fav: OFF");
                 _ctx_dirty = true;
                 // List rebuild is deferred to menu close: with the fav-only
                 // filter on, un-favouriting this channel removes it from the
@@ -1838,6 +2006,18 @@ public:
           }
         }
         auto res = _ctx_menu.handleInput(c);
+        if (_pin_picker_active) {
+          // Slot picker sub-menu: index 0..FAVOURITES_COUNT-1 maps directly to slot.
+          if (res == PopupMenu::SELECTED && _pin_slot_ch_idx >= 0) {
+            pinChannelToSlot((uint8_t)_pin_slot_ch_idx, _ctx_menu.selectedIndex());
+          }
+          if (res != PopupMenu::NONE) {
+            _pin_picker_active = false;
+            _pin_slot_ch_idx = -1;
+            _task->savePrefsIfDirty(_ctx_dirty);   // Notif/Melody/Fav edits made before Pin was picked
+          }
+          return true;
+        }
         if (res == PopupMenu::SELECTED && _num_channels > 0) {
           uint8_t ch_idx = _ctx_ch_idx;   // frozen at menu open — see declaration
           int sel = _ctx_menu.selectedIndex();
@@ -1845,10 +2025,26 @@ public:
             int cleared = (int)_history.chUnread(ch_idx);
             _history.setChUnread(ch_idx, 0);
             markReadAlert(cleared);
-          } else if (sel == 4) {              // Edit
+          } else if (sel == 4) {              // Pin / Unpin
+            int pinned_slot = _task->findFavouriteChannelSlot(ch_idx);
+            if (pinned_slot >= 0) {
+              _task->clearFavouriteSlot(pinned_slot);
+              the_mesh.savePrefs();
+              char alert[24];
+              snprintf(alert, sizeof(alert), "Unpinned (slot %d)", pinned_slot + 1);
+              _task->showAlert(alert, 800);
+            } else {
+              buildSlotLabels();
+              _ctx_menu.begin("Pick slot", 3);
+              for (int s = 0; s < NodePrefs::FAVOURITES_COUNT; s++) _ctx_menu.addItem(_pin_slot_labels[s]);
+              _pin_slot_ch_idx = ch_idx;
+              _pin_picker_active = true;
+              return true;   // list rebuild below would close the submenu
+            }
+          } else if (sel == 5) {              // Edit
             ChannelDetails ch;
             if (the_mesh.getChannel(ch_idx, ch)) _ch_view.openEdit(ch_idx, ch.name);
-          } else if (sel == 5) {              // Delete
+          } else if (sel == 6) {              // Delete
             ChannelDetails ch;
             memset(&ch, 0, sizeof(ch));
             the_mesh.setChannelLocal(ch_idx, ch);
@@ -1883,6 +2079,7 @@ public:
       if (c == KEY_ENTER && _num_channels > 0 && _channel_sel < _num_channels) {
         _sel_channel_idx = _channel_indices[_channel_sel];
         if (_pick_target) { commitPickTargetChannel(_sel_channel_idx); return true; }
+        if (_pick_fav_slot >= 0) { commitPickFavChannel(_sel_channel_idx); return true; }
         if (_pick_bot_channel) { commitPickBotChannel(_sel_channel_idx); return true; }
         int hc = _history.histCountForChannel(_sel_channel_idx);
         _unread_at_entry = (int)_history.chUnread(_sel_channel_idx);
@@ -1908,12 +2105,17 @@ public:
                    ML[chNotifMelody(ch_idx)]); }
         { NodePrefs* p2 = _task->getNodePrefs();
           bool is_fav = p2 && (p2->ch_fav_bitmask & (1ULL << ch_idx));
-          snprintf(_ctx_ch_fav_item, sizeof(_ctx_ch_fav_item), is_fav ? "Fav: ON" : "Fav: OFF"); }
+          snprintf(_ctx_fav_item, sizeof(_ctx_fav_item), is_fav ? "Fav: ON" : "Fav: OFF"); }
+        { int pinned_slot = _task->findFavouriteChannelSlot(ch_idx);
+          if (pinned_slot >= 0) snprintf(_ctx_pin_item, sizeof(_ctx_pin_item), "Unpin (slot %d)", pinned_slot + 1);
+          else                  snprintf(_ctx_pin_item, sizeof(_ctx_pin_item), "Pin to dial"); }
         _ctx_menu.begin("Channel options", 6);
         _ctx_menu.addItem("Mark all read");
         _ctx_menu.addItem(_ctx_notif_item);
         _ctx_menu.addItem(_ctx_melody_item);
-        _ctx_menu.addItem(_ctx_ch_fav_item);
+        _ctx_fav_idx = 3;
+        _ctx_menu.addItem(_ctx_fav_item);
+        _ctx_menu.addItem(_ctx_pin_item);
         _ctx_menu.addItem("Edit");
         _ctx_menu.addItem("Delete");
         _ctx_dirty = false;
@@ -1963,8 +2165,8 @@ public:
         return true;
       }
       if (c == KEY_CANCEL) {
-        if (_dm_direct_entry) {
-          _dm_direct_entry = false;
+        if (_direct_entry) {
+          _direct_entry = false;
           _task->gotoHomeScreen();
         } else {
           _phase = CONTACT_PICK;
@@ -2053,7 +2255,11 @@ public:
         }
         return true;
       }
-      if (c == KEY_CANCEL) { _phase = CHANNEL_PICK; return true; }
+      if (c == KEY_CANCEL) {
+        if (_direct_entry) { _direct_entry = false; _task->gotoHomeScreen(); }
+        else               { _phase = CHANNEL_PICK; }
+        return true;
+      }
       // Newest (index 0) now renders at the bottom, oldest at the top (see the
       // render block above) — UP/DOWN swap direction accordingly, same as the
       // DM history handler above.

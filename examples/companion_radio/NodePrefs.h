@@ -87,7 +87,7 @@ struct NodePrefs {  // persisted to file
   char custom_msgs[10][140];   // user-defined quick messages (supports {loc}, {time})
   uint64_t ch_notif_override;  // bitmask: bit i = channel i has explicit notification setting [del→onChannelRemoved]
   uint64_t ch_notif_muted;     // bitmask: bit i = channel i muted (only if override bit set) [del→onChannelRemoved]
-  uint8_t  dm_show_all;        // 0=favourites only (default), 1=all chat contacts
+  uint8_t  dm_show_all;        // 0=favourites only, 1=all chat contacts (default)
   uint8_t  room_fav_only;      // 0=all room servers (default), 1=favourites only
   uint8_t  ringtone_bpm_idx;   // index into {60,90,120,150,180}
   uint8_t  ringtone_len;        // number of notes in custom ringtone (0 = use default)
@@ -143,11 +143,19 @@ struct NodePrefs {  // persisted to file
   uint8_t  page_order_set;      // 0xA5 = page_order is user-configured; anything else = use default
   static const uint8_t PAGE_ORDER_MAGIC = 0xA5;
 
-  // Favourites dial: 6 pinned contacts, stored as first 6 bytes of pub_key per slot.
-  // All-zero = empty slot (probability a real pub_key starts with 6 zero bytes is 2^-48).
-  // Layout transposes between landscape (3×2) and portrait (2×3).
+  // Favourites dial: 6 pinned targets. Layout transposes between landscape
+  // (3×2) and portrait (2×3). What a slot holds depends on favourite_kinds[]
+  // (stored at the struct tail, see there):
+  //   FAV_KIND_CONTACT — first 6 bytes of pub_key; covers chat contacts and
+  //     room servers alike. All-zero = empty slot (a real pub_key starts with
+  //     6 zero bytes with probability 2^-48).
+  //   FAV_KIND_CHANNEL — channel index in byte 0, rest zero. Never empty:
+  //     channel 0 is all-zero, so emptiness is decided by the kind first.
   static const uint8_t FAVOURITES_COUNT = 6;
   static const uint8_t FAVOURITE_PREFIX_LEN = 6;
+  static const uint8_t FAV_KIND_CONTACT = 0;
+  static const uint8_t FAV_KIND_CHANNEL = 1;
+  static const uint8_t FAV_KIND_MAX     = 1;
   uint8_t favourite_contacts[FAVOURITES_COUNT][FAVOURITE_PREFIX_LEN]; // [del→onContactRemoved]
 
   // GPS trail cadence. Logging on/off is a runtime state (Tools › Trail),
@@ -470,6 +478,16 @@ struct NodePrefs {  // persisted to file
   // companion's own messages send under, only what repeat_scope_only accepts.
   char     repeat_extra_scopes[24];
 
+  // What each favourite_contacts[] slot holds (see FAV_KIND_* by that field).
+  // Appended here, not next to it, because the on-disk format is append-only.
+  // Zero-init = every slot is a contact, which is what pre-0x28 saves are.
+  uint8_t  favourite_kinds[FAVOURITES_COUNT];  // [del→onChannelRemoved]
+
+  // Settings > Contacts > "Favs top". Stored inverted so that both a fresh
+  // memset and an older prefs file (no bytes here at all) mean "on", which is
+  // the default -- a positive flag would read back as off for every upgrader.
+  uint8_t  fav_sort_off;       // 0 = favourites first in every list (default), 1 = natural order
+
   // Single source of truth for the live-share option tables (shared by the Map
   // UI labels and the auto-send engine in UITask).
   static const uint8_t LOC_SHARE_MOVE_COUNT = 4;
@@ -537,7 +555,7 @@ struct NodePrefs {  // persisted to file
   // repeat_* fields) instead of at the tail, which shifted every field after
   // them by 25 bytes when loading an older file. Never released, but a dev
   // build wrote it, so the number must not be reused for anything else.
-  static const uint32_t SCHEMA_SENTINEL = 0xC0DE0027;
+  static const uint32_t SCHEMA_SENTINEL = 0xC0DE0029;
 
   // Bit-index for each home page. Used by page_order (entries store bit+1) and
   // by home_pages_mask. Single source of truth — both HomeScreen::pageBit/bitToPage
@@ -662,7 +680,12 @@ struct NodePrefs {  // persisted to file
 // the struct tail (the 0xC0DE0026 mid-stream layout was unreadable for older
 // files, see the sentinel comment) -- padding worked out identically either
 // way, so sizeof stays 2752. Confirmed via a real Heltec_v3 build.
-static_assert(sizeof(NodePrefs) == 2752,
+// favourite_kinds[6] (0xC0DE0028) added 8 bytes, not 6 -- the struct had no
+// spare tail padding left after 0xC0DE0026, so the 6 real bytes rounded up to
+// the next alignment boundary. Confirmed via a real Heltec_v3 build.
+// fav_sort_off (0xC0DE0029) landed in the 2 bytes of padding the 0xC0DE0028
+// bump left over -- confirmed via a real Heltec_v3 build, sizeof unchanged.
+static_assert(sizeof(NodePrefs) == 2760,
               "NodePrefs layout changed — sync DataStore save/load + clamp, bump "
               "SCHEMA_SENTINEL, then update this size (see steps above).");
 

@@ -114,11 +114,16 @@ European Latin-diacritic letters (Polish, Czech, Slovak, German, French, Spanish
 
 ### Contacts
 
-| Setting  | Options          | Notes                                                |
-| -------- | ---------------- | ---------------------------------------------------- |
-| DMs      | all / favourites | Show all chat contacts or only upstream-starred ones |
-| Channels | all / favourites | Show all channels or only favourited ones            |
-| Rooms    | all / favourites | Show all room servers or only favourited ones        |
+| Setting  | Options   | Notes                                       |
+| -------- | --------- | ------------------------------------------- |
+| DMs      | All / Fav | Show all chat contacts or only favourited ones |
+| Channels | All / Fav | Show all channels or only favourited ones      |
+| Rooms    | All / Fav | Show all room servers or only favourited ones  |
+| Favs top | ON / OFF  | Sort favourites to the top of every list (default ON) |
+
+Favourites are set per item in its context menu (**Hold Enter** › **Fav: ON / OFF**) — see [Message Screen](../message_screen/message_screen.md), and the same row exists in Tools › Nodes. A contact's or room's favourite flag is the same one the companion app shows as a starred contact, so it syncs both ways; a channel's is device-only.
+
+A favourite is marked with a ★ on its row wherever it is listed, and — unless **Favs top** is off — sorted above everything else. The three filters above are independent of that: they control what's *listed at all*, the sort only controls the order.
 
 ---
 

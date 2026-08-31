@@ -268,6 +268,11 @@ public:
   // CMD_SET_CHANNEL BLE handler already performs, so both paths stay in sync.
   bool setChannelLocal(uint8_t idx, const ChannelDetails& ch);
 
+  // On-device favourite toggle (Messages > Contacts/Rooms > Fav). Writes the
+  // same ContactInfo::flags bit 0 the app's starred-contact flag uses, so the
+  // "fav" list filters no longer depend on the app having starred anything.
+  bool setContactFavourite(const uint8_t* pub_key, bool fav);
+
   // On-device "remote admin" (Tools > Admin): send a CLI command to a node
   // you're logged into with admin permission (see ClientACL::isAdmin()). The
   // reply is a text frame (TXT_TYPE_CLI_DATA) delivered via onCommandDataRecv();

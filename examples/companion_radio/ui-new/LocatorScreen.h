@@ -41,6 +41,7 @@ class LocatorScreen : public UIScreen {
     char     name[20];
     uint32_t ts;              // last position update (0 = unknown), for the age tag
     bool     live;            // true = an active [LOC] share right now
+    bool     fav;             // person is a favourite — ★ on the row, as in every other list
   };
   static const int TARGET_MAX = 40;
   Target _targets[TARGET_MAX];
@@ -170,7 +171,7 @@ public:
   // precedence UITask::locatorDistance() uses at evaluation time. When
   // `require_position` is false (favourites), a contact with neither is still
   // added with no position — "arm ahead of time", per the existing feature.
-  bool addPersonTarget(const uint8_t* key, const char* name, bool require_position) {
+  bool addPersonTarget(const uint8_t* key, const char* name, bool require_position, bool fav) {
     if (_target_n >= TARGET_MAX) return false;
     for (int j = 0; j < _target_n; j++)
       if (_targets[j].kind == 1 && memcmp(_targets[j].key, key, 6) == 0) return false;  // already added
@@ -180,7 +181,7 @@ public:
     if (require_position && !has_pos) return false;   // nothing to navigate to yet
 
     Target& t = _targets[_target_n++];
-    t.kind = 1; t.lat = lat; t.lon = lon; t.ts = ts; t.live = live;
+    t.kind = 1; t.lat = lat; t.lon = lon; t.ts = ts; t.live = live; t.fav = fav;
     memcpy(t.key, key, 6);
     snprintf(t.name, sizeof(t.name), "%s", name);
     return true;
@@ -196,7 +197,7 @@ public:
   void buildTargets() {
     _target_n = 0;
     Target& none = _targets[_target_n++];
-    none.kind = 2; none.lat = 0; none.lon = 0; none.ts = 0; none.live = false;
+    none.kind = 2; none.lat = 0; none.lon = 0; none.ts = 0; none.live = false; none.fav = false;
     memset(none.key, 0, 6);
     snprintf(none.name, sizeof(none.name), "(none)");
     for (int i = 0; i < NodePrefs::FAVOURITES_COUNT; i++) {
@@ -206,18 +207,18 @@ public:
       if (empty) continue;
       ContactInfo* c = the_mesh.lookupContactByPubKey(pre, NodePrefs::FAVOURITE_PREFIX_LEN);
       if (!c) continue;
-      addPersonTarget(pre, c->name, /*require_position=*/false);
+      addPersonTarget(pre, c->name, /*require_position=*/false, (c->flags & 0x01) != 0);
     }
     for (int idx = 0; _target_n < TARGET_MAX; idx++) {
       ContactInfo c;
       if (!the_mesh.getContactByIdx(idx, c)) break;
-      addPersonTarget(c.id.pub_key, c.name, /*require_position=*/true);
+      addPersonTarget(c.id.pub_key, c.name, /*require_position=*/true, (c.flags & 0x01) != 0);
     }
     WaypointStore& wp = _task->waypoints();
     for (int i = 0; i < wp.count() && _target_n < TARGET_MAX; i++) {
       const Waypoint& w = wp.at(i);
       Target& t = _targets[_target_n++];
-      t.kind = 0; t.lat = w.lat_1e6; t.lon = w.lon_1e6;
+      t.kind = 0; t.lat = w.lat_1e6; t.lon = w.lon_1e6; t.fav = false;
       memset(t.key, 0, 6);
       snprintf(t.name, sizeof(t.name), "%s", w.label);
     }
@@ -286,8 +287,10 @@ public:
       } else {
         snprintf(row, sizeof(row), "@%s", t.name);          // favourite, no position known yet
       }
-      int mqr = display.drawTextEllipsized(2, y, display.width() - 2 - reserve, row, sel);
+      int sw = t.fav ? favStarWidth(display) : 0;
+      int mqr = display.drawTextEllipsized(2, y, display.width() - 2 - sw - reserve, row, sel);
       if (sel && mqr > 0) mq_delay = mqr;
+      if (sw) drawFavStar(display, display.width() - reserve - sw + 1, y);
     });
     return mq_delay;
   }

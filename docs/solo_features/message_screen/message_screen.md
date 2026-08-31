@@ -109,18 +109,23 @@ Selecting the row opens a read-only list of the resolved hops — each shown as 
 | Item                         | Action                                                                         |
 | ---------------------------- | ------------------------------------------------------------------------------ |
 | Mark as read                 | Clears unread counter for this contact                                         |
-| Notif: default / OFF / ON    | Per-contact notification override — **LEFT/RIGHT** to cycle                    |
-| Melody: global / M1 / M2     | Per-contact melody override — **LEFT/RIGHT** to cycle                          |
+| Notif: Default / OFF / ON    | Per-contact notification override — **LEFT/RIGHT** to cycle                    |
+| Melody: Global / M1 / M2     | Per-contact melody override — **LEFT/RIGHT** to cycle                          |
+| Fav: ON / OFF                | Mark this contact as a favourite — **LEFT/RIGHT** to toggle                    |
 | Pin to dial / Unpin (slot N) | Pin this contact to a Favourites Dial slot; if already pinned shows which slot |
+
+**Fav** and **Pin to dial** are separate. **Fav** is the starred flag shared with the companion app: it marks the row with a ★, sorts it above the rest of the list (unless **Settings › Contacts › Favs top** is off), and drives the `DMs = Fav` list filter. **Pin to dial** puts the contact on the [Favourites Dial](../favourites_dial/favourites_dial.md) page and changes nothing about the list.
 
 When **Pin to dial** is selected, a slot picker opens (Slot 1–6 showing current occupant name or "empty"). Choosing a slot that already holds another contact moves the new contact there.
 
 In the **Rooms** list the context menu instead offers:
 
-| Item    | Action                                                                       |
-| ------- | ---------------------------------------------------------------------------- |
-| Login…  | Opens the password prompt to (re-)log in to this room (see Rooms — logging in) |
-| Logout  | Only shown once logged in. Forgets the saved password so the next open prompts for one again |
+| Item          | Action                                                                       |
+| ------------- | ---------------------------------------------------------------------------- |
+| Login…        | Opens the password prompt to (re-)log in to this room (see Rooms — logging in) |
+| Logout        | Only shown once logged in. Forgets the saved password so the next open prompts for one again |
+| Fav: ON / OFF | Mark this room as a favourite — **LEFT/RIGHT** to toggle; drives the **Rooms = Fav** list filter |
+| Pin to dial / Unpin (slot N) | Pin this room to a [Favourites Dial](../favourites_dial/favourites_dial.md) slot |
 
 ---
 
@@ -135,9 +140,10 @@ In the **Rooms** list the context menu instead offers:
 | Item                      | Action                                                                |
 | ------------------------- | --------------------------------------------------------------------- |
 | Mark all read             | Clears all unread for this channel                                    |
-| Notif: default / OFF / ON | Per-channel notification override — **LEFT/RIGHT** to cycle           |
-| Melody: global / M1 / M2  | Per-channel melody override — **LEFT/RIGHT** to cycle                 |
+| Notif: Default / OFF / ON | Per-channel notification override — **LEFT/RIGHT** to cycle           |
+| Melody: Global / M1 / M2  | Per-channel melody override — **LEFT/RIGHT** to cycle                 |
 | Fav: ON / OFF             | Add or remove this channel from favourites — **LEFT/RIGHT** to toggle |
+| Pin to dial / Unpin (slot N) | Pin this channel to a [Favourites Dial](../favourites_dial/favourites_dial.md) slot |
 | Edit                      | Opens the Add/Edit form below, pre-filled with the channel's name    |
 | Delete                    | Removes the channel immediately (no confirm prompt)                   |
 

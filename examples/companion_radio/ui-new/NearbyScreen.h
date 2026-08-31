@@ -25,7 +25,7 @@ class NearbyScreen : public UIScreen {
 
   // ── action-menu actions (matched by id, not by row index) ────────────────────
   enum Action : uint8_t { ACT_NAV, ACT_PING, ACT_WAYPOINT, ACT_LOCATOR,
-                          ACT_ADD, ACT_DELETE, ACT_FAV, ACT_ADMIN, ACT_SORT, ACT_SCAN };
+                          ACT_ADD, ACT_DELETE, ACT_FAV, ACT_PIN, ACT_ADMIN, ACT_SORT, ACT_SCAN };
 
   // Set by UITask::pickAdminTarget() (Tools > Admin, which is remote-only):
   // while true, ENTER on an eligible row (a stored repeater/room contact) hands
@@ -55,6 +55,9 @@ class NearbyScreen : public UIScreen {
     // false for a channel (name, best-effort) share.
     bool     is_live;
     bool     live_verified;
+    // Favourite (ContactInfo::flags bit 0) -- always false for a scan/live row
+    // that isn't a contact, since only a contact can carry the flag.
+    bool     fav;
   };
 
   static const int MAX_NEARBY = 32;
@@ -197,6 +200,7 @@ class NearbyScreen : public UIScreen {
                     ? geo::haversineKm(_own_lat, _own_lon, ci.gps_lat, ci.gps_lon)
                     : -1.0f;
       e.type        = ci.type;
+      e.fav         = (ci.flags & 0x01) != 0;
       e.contact_idx = i + MAX_ANON_CONTACTS;   // raw index -- other lookups re-key off this directly
       e.lastmod     = ci.lastmod;
       e.is_known    = true;
@@ -324,9 +328,15 @@ class NearbyScreen : public UIScreen {
 
   void sortStored() {
     uint32_t now_ts = rtc_clock.getCurrentTime();
+    NodePrefs* p = _task->getNodePrefs();
+    const bool fav_first = !(p && p->fav_sort_off);
     for (int i = 0; i < _count - 1; i++) {
       int best = i;
       for (int j = i + 1; j < _count; j++) {
+        if (fav_first && _entries[j].fav != _entries[best].fav) {
+          if (_entries[j].fav) best = j;   // favourites outrank the time/distance key
+          continue;
+        }
         if (_sort == SORT_TIME) {
           // lastmod=0 or lastmod>now (RTC not synced) → "unknown" → sort to bottom.
           uint32_t tj = (_entries[j].lastmod > 0 && now_ts >= _entries[j].lastmod) ? _entries[j].lastmod : 0;
@@ -357,6 +367,7 @@ class NearbyScreen : public UIScreen {
       e.snr_x4        = dr[i].snr_x4;
       e.remote_snr_x4 = dr[i].remote_snr_x4;
       e.is_known      = dr[i].is_known;
+      e.fav           = false;
       e.lat_e6 = e.lon_e6 = 0;
       e.dist_km = -1.0f;
       e.lastmod = 0;
@@ -411,23 +422,28 @@ class NearbyScreen : public UIScreen {
 
   // Toggle the given contact in the Favourites dial: unpin if already pinned, else
   // pin to the first empty slot. Persisted immediately (same as the Messages picker).
-  void toggleFavourite(const uint8_t* pub_key) {
+  // Unlike the Messages lists, this one doesn't ask which slot -- it takes the
+  // first free one. The menu here is already long, and the dial itself can
+  // rearrange afterwards.
+  void togglePinToDial(const uint8_t* pub_key) {
     int slot = _task->findFavouriteSlot(pub_key);
     if (slot >= 0) {
       _task->clearFavouriteSlot(slot);
       the_mesh.savePrefs();
-      _task->showAlert("Unfavourited", 1000);
+      _task->showAlert("Unpinned", 1000);
       return;
     }
     for (int s = 0; s < NodePrefs::FAVOURITES_COUNT; s++) {
       if (_task->isFavouriteSlotEmpty(s)) {
         _task->setFavouriteSlot(s, pub_key);
         the_mesh.savePrefs();
-        _task->showAlert("Favourited", 1000);
+        char alert[24];
+        snprintf(alert, sizeof(alert), "Pinned to slot %d", s + 1);
+        _task->showAlert(alert, 1000);
         return;
       }
     }
-    _task->showAlert("Favourites full", 1200);
+    _task->showAlert("Dial full", 1200);
   }
 
   // Deleting a contact is destructive → confirm first (default highlight = Cancel).
@@ -551,6 +567,8 @@ class NearbyScreen : public UIScreen {
     return e && ((e->contact_idx >= 0) || (_source == SRC_SCAN && e->is_known));
   }
 
+  char _pin_label[24];   // "Pin to dial" / "Unpin (slot N)" -- _menu stores the pointer
+
   void openActionMenu() {
     const Entry* e = selected();
     bool stored  = (_source == SRC_STORED);
@@ -558,7 +576,7 @@ class NearbyScreen : public UIScreen {
     bool has_key = e && e->has_key;
     bool is_contact = entryIsContact(e);
     bool can_add = e && has_key && !is_contact;   // a new node we can save
-    bool is_fav  = e && has_key && _task->findFavouriteSlot(e->pub_key) >= 0;
+    bool is_pinned = e && has_key && _task->findFavouriteSlot(e->pub_key) >= 0;
     // Admin needs a real saved contact (repeater/room), not a scan result or a
     // name-only live-share row -- same gating as startPickAdminTarget()'s ENTER.
     bool is_admin_target = e && stored && e->contact_idx >= 0
@@ -579,7 +597,13 @@ class NearbyScreen : public UIScreen {
     // by pubkey prefix, so a name-only live-scan/channel row can't offer this.
     if (has_gps && has_key) add("Set as target", ACT_LOCATOR);
     if (can_add)            add("Add contact", ACT_ADD);
-    if (is_contact && has_key) add(is_fav ? "Unfavourite" : "Favourite", ACT_FAV);
+    if (is_contact && has_key) add(e->fav ? "Fav: ON" : "Fav: OFF", ACT_FAV);
+    if (is_contact && has_key) {
+      if (is_pinned) snprintf(_pin_label, sizeof(_pin_label), "Unpin (slot %d)",
+                              _task->findFavouriteSlot(e->pub_key) + 1);
+      else           snprintf(_pin_label, sizeof(_pin_label), "Pin to dial");
+      add(_pin_label, ACT_PIN);
+    }
     if (is_admin_target)       add("Admin", ACT_ADMIN);
     if (is_contact && has_key) add("Delete contact", ACT_DELETE);
     if (stored) add(_sort_label, ACT_SORT);   // sort is meaningless for live-scan rows
@@ -622,7 +646,12 @@ class NearbyScreen : public UIScreen {
       }
       case ACT_FAV: {
         const Entry* e = selected();
-        if (e && e->has_key) toggleFavourite(e->pub_key);
+        if (e && e->has_key && the_mesh.setContactFavourite(e->pub_key, !e->fav)) refreshKeepingSelection();
+        break;
+      }
+      case ACT_PIN: {
+        const Entry* e = selected();
+        if (e && e->has_key) togglePinToDial(e->pub_key);
         break;
       }
       case ACT_DELETE:   startDeleteConfirm(); break;
@@ -866,9 +895,9 @@ public:
           miniIconDrawCentered(display, tx + iw / 2, y + display.getLineHeight() / 2 - 1, ICON_MAP_CONTACT);
           tx += iw + 2;
         }
-        // Star = pinned to the Favourites dial (same glyph as the Favourites page
-        // icon). Shown next to any live diamond so both states read at once.
-        if (e.has_key && _task->findFavouriteSlot(e.pub_key) >= 0) {
+        // Star = favourite, the same marker every other list uses. Shown next to
+        // any live diamond so both states read at once.
+        if (e.fav) {
           int iw = ICON_PG_STAR.w * miniIconScale(display);
           miniIconDrawCentered(display, tx + iw / 2, y + display.getLineHeight() / 2 - 1, ICON_PG_STAR);
           tx += iw + 2;

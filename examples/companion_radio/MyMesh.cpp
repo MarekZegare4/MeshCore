@@ -463,6 +463,17 @@ bool MyMesh::deleteContactByKey(const uint8_t* pub_key) {
   return true;
 }
 
+// lastmod is bumped so the app's next 'since'-filtered contact sync picks the
+// change up; the write itself is lazy, like every other contact edit.
+bool MyMesh::setContactFavourite(const uint8_t* pub_key, bool fav) {
+  ContactInfo* c = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
+  if (!c) return false;
+  if (fav) c->flags |= 0x01; else c->flags &= ~0x01;
+  c->lastmod = getRTCClock()->getCurrentTime();
+  dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+  return true;
+}
+
 void MyMesh::onContactPathUpdated(const ContactInfo &contact) {
   out_frame[0] = PUSH_CODE_PATH_UPDATED;
   memcpy(&out_frame[1], contact.id.pub_key, PUB_KEY_SIZE);

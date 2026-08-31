@@ -13,18 +13,19 @@ struct PopupMenu {
   int         _count;
   int         _sel;
   int         _scroll;
-  int         _visible;   // caller hint (min visible items)
-  int         _cap;       // actual visible cap, updated each render()
+  int         _cap;       // actual visible cap, recomputed each render()
   bool        active;
   const char* _title;
 
   enum Result { NONE, SELECTED, CANCELLED };
 
-  PopupMenu() : _count(0), _sel(0), _scroll(0), _visible(3), _cap(3), active(false), _title(nullptr) {}
+  PopupMenu() : _count(0), _sel(0), _scroll(0), _cap(3), active(false), _title(nullptr) {}
 
+  // `visible` is only a seed for the first frame: render() recomputes _cap from
+  // the live display height, so it does not cap or pad the item list.
   void begin(const char* title, int visible = 3) {
     _count = 0; _sel = 0; _scroll = 0;
-    _visible = visible; _cap = visible; active = true; _title = title;
+    _cap = visible; active = true; _title = title;
   }
 
   void addItem(const char* item) {
