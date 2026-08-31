@@ -849,6 +849,7 @@ public:
         }
       } else if (res == PopupMenu::CANCELLED) {
         _picker.deleting = false;
+        _picker.confirm_slot = -1;
       }
       return true;
     }

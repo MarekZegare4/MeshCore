@@ -144,7 +144,7 @@ public:
   void onShow() override {
     _dirty = false; _sel = 0; _scroll = 0;
     _picker.menu.active = false; _editor.freq.active = false;
-    _picker.saving = false; _picker.deleting = false;
+    _picker.saving = false; _picker.deleting = false; _picker.confirm_slot = -1;
     _editing_scope = false;
   }
 
@@ -234,6 +234,7 @@ public:
         }
       } else if (res == PopupMenu::CANCELLED) {
         _picker.deleting = false;
+        _picker.confirm_slot = -1;
       }
       return true;
     }

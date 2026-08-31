@@ -911,17 +911,16 @@ struct KeyboardWidget {
     const int rows = gridRows();
     const int cols = gridCols();
 
-    // Hold-Enter is normally "cancel", but three places give it a more useful
-    // meaning instead: Shift -> toggle a persistent caps-lock (a plain tap is
-    // one-shot -- see the commit sites below); Backspace -> clear the whole
-    // field in one action instead of holding it down; a Latin-page letter cell
-    // with accented variants -> open the accent popup (see accent_active
-    // above). Every other special-row cell keeps hold-to-cancel; any other
-    // letter/symbol cell (a plain letter with no accents, or any T9/alt-
-    // alphabet/symbols cell) is a silent no-op instead, so it can't
-    // accidentally close the keyboard. Cursor mode itself moved off Hold-Enter
-    // entirely -- see the KEY_UP block below, where UP from row 0 now enters
-    // it instead.
+    // Hold-Enter has a distinct meaning on three cells -- Shift -> toggle a
+    // persistent caps-lock (a plain tap is one-shot -- see the commit sites
+    // below); Backspace -> clear the whole field in one action instead of
+    // holding it down; a Latin-page letter cell with accented variants ->
+    // open the accent popup (see accent_active above) -- and is a silent
+    // no-op everywhere else (any other special-row cell, a plain letter with
+    // no accents, or any T9/alt-alphabet/symbols cell), matching the "only
+    // Back closes it" rule every other screen's popups/menus follow. Cursor
+    // mode itself moved off Hold-Enter entirely -- see the KEY_UP block
+    // below, where UP from row 0 now enters it instead.
     if (c == KEY_CONTEXT_MENU) {
       if (row == rows && col == 0) {          // Shift
         caps_lock = !caps_lock;
@@ -941,7 +940,7 @@ struct KeyboardWidget {
         }
         return NONE;   // no variants for this cell, or T9/non-Latin/symbols page
       }
-      return CANCELLED;
+      return NONE;   // any other special-row cell (Space, OK/Done, placeholder)
     }
 
     if (c == KEY_UP) {

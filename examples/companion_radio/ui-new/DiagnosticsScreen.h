@@ -196,39 +196,35 @@ class DiagnosticsScreen : public UIScreen {
     addLine("Sym @#&*()[]{}/\\+=");
   }
 
-  // Shared scrollable renderer for the label/value Live tab.
+  // Shared scrollable renderer for the label/value Live tab. Neither tab has a
+  // row cursor -- UP/DOWN move _scroll directly -- so this passes _scroll as
+  // drawList()'s `sel` too: its internal clamp-toward-sel is then a no-op
+  // (sel == scroll always), leaving clampScroll() below as the only thing
+  // that actually bounds _scroll, same as before.
   void renderRows(DisplayDriver& display) {
-    const int item_h  = display.lineStep();
-    const int start_y = display.listStart();
+    const int item_h = display.lineStep();
     int visible = display.listVisible(item_h);
     if (visible < 1) visible = 1;
     clampScroll(_row_count, visible);
-
-    const int reserve = scrollIndicatorReserve(display, _row_count, visible);
-    for (int i = 0; i < visible && (_scroll + i) < _row_count; i++) {
-      const Row& r = _rows[_scroll + i];
-      int y = start_y + i * item_h;
-      display.setCursor(2, y);
-      display.print(r.label);
-      display.drawTextRightAlign(display.width() - reserve - 2, y, r.value);
-    }
-    drawScrollIndicator(display, start_y, visible * item_h, _row_count, visible, _scroll);
+    drawList(display, _row_count, _scroll, _scroll,
+      [&](int idx, int y, bool, int reserve) {
+        const Row& r = _rows[idx];
+        display.setCursor(2, y);
+        display.print(r.label);
+        display.drawTextRightAlign(display.width() - reserve - 2, y, r.value);
+      });
   }
 
   // Shared scrollable renderer for the full-width System / Font tabs.
   void renderLines(DisplayDriver& display) {
-    const int item_h  = display.lineStep();
-    const int start_y = display.listStart();
+    const int item_h = display.lineStep();
     int visible = display.listVisible(item_h);
     if (visible < 1) visible = 1;
     clampScroll(_line_count, visible);
-
-    const int reserve = scrollIndicatorReserve(display, _line_count, visible);
-    for (int i = 0; i < visible && (_scroll + i) < _line_count; i++) {
-      int y = start_y + i * item_h;
-      display.drawTextEllipsized(2, y, display.width() - reserve - 4, _lines[_scroll + i]);
-    }
-    drawScrollIndicator(display, start_y, visible * item_h, _line_count, visible, _scroll);
+    drawList(display, _line_count, _scroll, _scroll,
+      [&](int idx, int y, bool, int reserve) {
+        display.drawTextEllipsized(2, y, display.width() - reserve - 4, _lines[idx]);
+      });
   }
 
   void clampScroll(int total, int visible) {

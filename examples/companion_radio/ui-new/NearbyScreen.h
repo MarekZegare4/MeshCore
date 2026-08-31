@@ -446,7 +446,9 @@ class NearbyScreen : public UIScreen {
     if (slot >= 0) {
       _task->clearFavouriteSlot(slot);
       the_mesh.savePrefs();
-      _task->showAlert("Unpinned", 1000);
+      char alert[24];
+      snprintf(alert, sizeof(alert), "Unpinned (slot %d)", slot + 1);
+      _task->showAlert(alert, 1000);
       return;
     }
     for (int s = 0; s < NodePrefs::FAVOURITES_COUNT; s++) {

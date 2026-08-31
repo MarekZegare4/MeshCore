@@ -148,7 +148,7 @@ In the **Rooms** list the context menu instead offers:
 | Fav: ON / OFF             | Add or remove this channel from favourites — **LEFT/RIGHT** or **Enter** to toggle |
 | Pin to dial / Unpin (slot N) | Pin this channel to a [Favourites Dial](../favourites_dial/favourites_dial.md) slot |
 | Edit                      | Opens the Add/Edit form below, pre-filled with the channel's name    |
-| Delete                    | Removes the channel immediately (no confirm prompt)                   |
+| Delete                    | Removes the channel — confirms first (defaults to Cancel)             |
 
 ---
 

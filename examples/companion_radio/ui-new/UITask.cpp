@@ -1226,7 +1226,9 @@ public:
           }
           _task->clearFavouriteSlot(_pin_target_slot);
           the_mesh.savePrefs();
-          _task->showAlert("Unpinned", 800);
+          char alert[24];
+          snprintf(alert, sizeof(alert), "Unpinned (slot %d)", _pin_target_slot + 1);
+          _task->showAlert(alert, 800);
         }
         if (res != PopupMenu::NONE) _pin_target_slot = -1;
         return true;
@@ -1295,9 +1297,9 @@ public:
     if (c == KEY_ENTER && _page == HomePage::ADVERT) {
       _task->notify(UIEventType::ack);
       if (the_mesh.advert()) {
-        _task->showAlert("Advert sent!", 1000);
+        _task->showAlert("Advert sent", 1000);
       } else {
-        _task->showAlert("Advert failed..", 1000);
+        _task->showAlert("Advert failed", 1000);
       }
       return true;
     }

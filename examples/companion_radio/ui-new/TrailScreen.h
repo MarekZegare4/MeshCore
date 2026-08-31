@@ -79,7 +79,7 @@ class TrailScreen : public UIScreen {
   // correctly (settings rows cycle with LEFT/RIGHT; everything else is Enter).
   // Live-share *config* lives in its own tool (Tools › Live Share); the map only
   // keeps the one-shot "Share my pos" action.
-  enum MenuLevel { ML_MAIN, ML_FILE, ML_SETTINGS, ML_CONFIRM_GPS };
+  enum MenuLevel { ML_MAIN, ML_FILE, ML_SETTINGS, ML_CONFIRM_GPS, ML_CONFIRM_RESET };
   PopupMenu _action_menu;
   uint8_t   _menu_level = ML_MAIN;
   uint8_t   _act_map[16];  // max rows on any one level; pushAction guards the cap
@@ -177,6 +177,13 @@ public:
           _menu_level = ML_MAIN;   // popup already closed by handleInput()
           return true;
         }
+        // Reset confirmation popup: same shape, but defaults to Cancel (row 1)
+        // since unlike the GPS prompt above, this one is destructive.
+        if (_menu_level == ML_CONFIRM_RESET) {
+          if (_action_menu.selectedIndex() == 0) handleReset();   // "Reset"
+          _menu_level = ML_MAIN;
+          return true;
+        }
         int sel = _action_menu.selectedIndex();
         ActionId act = (sel >= 0 && sel < _act_count) ? (ActionId)_act_map[sel] : ACT_TOGGLE;
         switch (act) {
@@ -205,7 +212,7 @@ public:
           case ACT_TRACKBACK:     _wp.startTrackBack(); break;
           case ACT_SAVE:          handleSave();        break;
           case ACT_LOAD:          handleLoad();        break;
-          case ACT_RESET:         handleReset();       break;
+          case ACT_RESET:         buildResetConfirmMenu(); return true;
           case ACT_EXPORT:        handleExport();      break;
           case ACT_EXPORT_SAVED:  handleExportSaved(); break;
         }
@@ -389,6 +396,19 @@ private:
     _action_menu.begin("GPS is off", 2);
     _action_menu.addItem("Enable GPS & start");
     _action_menu.addItem("Cancel");
+  }
+
+  // Confirmation shown when "Reset trail" is chosen -- wipes the whole
+  // recorded route with no way back short of a prior manual Save, unlike the
+  // GPS prompt above this defaults to Cancel (row 1), same idiom as
+  // NearbyScreen's contact-delete confirm.
+  void buildResetConfirmMenu() {
+    _menu_level = ML_CONFIRM_RESET;
+    _act_count  = 0;
+    _action_menu.begin("Reset trail?", 2);
+    _action_menu.addItem("Reset");
+    _action_menu.addItem("Cancel");
+    _action_menu.setSelected(1);
   }
 
   // Trail-file submenu — only the operations that make sense right now.

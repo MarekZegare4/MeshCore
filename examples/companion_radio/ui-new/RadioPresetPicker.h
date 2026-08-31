@@ -39,6 +39,7 @@ struct RadioPresetPicker {
   int       user_count = 0;
   bool      saving   = false;   // keyboard is open to name a new preset
   bool      deleting = false;   // menu is showing the delete sub-list
+  int       confirm_slot = -1;  // >=0 = confirming deletion of this NodePrefs slot
 
   static bool matches(const Target& t, float freq, float bw, uint8_t sf, uint8_t cr) {
     return radioParamsMatchPreset(*t.freq, *t.bw, *t.sf, *t.cr, freq, bw, sf, cr);
@@ -124,18 +125,38 @@ struct RadioPresetPicker {
     deleting = true;
   }
 
+  // Third level, reached by picking a name off the delete sub-list: a plain
+  // Delete/Cancel confirm, defaulting to Cancel like every other destructive
+  // action's popup (see NearbyScreen's contact-delete confirm). Whichever row
+  // is picked, onSelected() below is terminal -- the whole picker closes,
+  // same as it already does after a built-in/user preset pick.
+  void openConfirm(uint8_t slot) {
+    menu.begin("Delete preset?", 2);
+    menu.addItem("Delete");
+    menu.addItem("Cancel");
+    menu.setSelected(1);
+    confirm_slot = slot;
+    deleting = false;
+  }
+
   // Handle the index the popup reports as SELECTED. Mutates target fields on a
-  // built-in/user pick; deletes a slot in the delete sub-list. See Result.
+  // built-in/user pick; opens the delete confirm from the delete sub-list, or
+  // resolves that confirm if it's the level currently showing. See Result.
   Result onSelected(int idx, NodePrefs* p, const Target& t) {
     if (!p) return NONE;
-    if (deleting) {
+    if (confirm_slot >= 0) {
       Result r = NONE;
-      if (idx >= 0 && idx < user_count) {
-        p->user_radio_presets[user_slot[idx]].name[0] = '\0';
+      if (idx == 0) {   // "Delete"
+        p->user_radio_presets[confirm_slot].name[0] = '\0';
         r = DELETED;
       }
-      deleting = false;
+      confirm_slot = -1;
       return r;
+    }
+    if (deleting) {
+      if (idx >= 0 && idx < user_count) openConfirm(user_slot[idx]);
+      deleting = false;
+      return NONE;
     }
     const int builtin_base = 1;
     const int user_base    = builtin_base + RADIO_PRESET_COUNT;

@@ -9,6 +9,13 @@
 class MessagesScreen : public UIScreen {
   UITask* _task;
 
+  // Shared by every Notif/Melody value row -- contact, room and channel
+  // context menus alike -- so the wording only needs to agree in one place.
+  // Defined at file scope below (see NearbyScreen::FILTER_LABELS for the same
+  // pattern).
+  static const char* const NOTIF_LABELS[3];
+  static const char* const MELODY_LABELS[3];
+
   enum Phase { MODE_SELECT, CONTACT_PICK, DM_HIST, MSG_PICK, CHANNEL_PICK, CHANNEL_HIST, KEYBOARD };
   Phase _phase;
 
@@ -71,6 +78,7 @@ class MessagesScreen : public UIScreen {
   bool      _pin_picker_active;  // true while the slot-picker submenu is open
   int       _pick_fav_slot = -1; // >=0 = browsing to fill that Favourites dial slot
   int       _pin_slot_ch_idx = -1; // >=0 = that submenu is pinning this channel, not a contact
+  bool      _ch_delete_confirm_active = false; // true while the Delete/Cancel submenu is open
   bool      _direct_entry;      // entered a history view straight from the Favourites dial;
                                 // CANCEL returns home instead of to the picker
   char      _reply_prefix[36];   // "@[nick] " built when reply is triggered
@@ -534,7 +542,7 @@ class MessagesScreen : public UIScreen {
       _history.setChUnread(_sel_channel_idx, 0);
       _unread_at_entry = 0;
       _viewing_max_seen = 0;
-      _task->showAlert("Sent!", 600);
+      _task->showAlert("Sent", 600);
     } else if (ok) {
       NodePrefs* np = _task->getNodePrefs();
       uint8_t resends = np ? np->dm_resend_count : 0;
@@ -543,7 +551,7 @@ class MessagesScreen : public UIScreen {
       _dm_hist_sel = 0;
       _dm_hist_scroll = 0;
       _phase = DM_HIST;
-      _task->showAlert("Sent!", 600);
+      _task->showAlert("Sent", 600);
     } else {
       _task->showAlert("Send failed", 1500);
       _task->gotoHomeScreen();
@@ -732,8 +740,6 @@ class MessagesScreen : public UIScreen {
   // Advance one of the contact menu's value rows. dir is +1 for RIGHT and for
   // Enter (which PopupMenu reports as VALUE_NEXT on a value row), -1 for LEFT.
   void cycleContactCtxValue(int sel, int dir) {
-    static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
-    static const char* ML[]           = { "Global", "M1", "M2" };
     ContactInfo ci;
     if (_num_contacts <= 0 || !the_mesh.getContactByIdx(_sorted[_contact_sel], ci)) return;
     if (sel == 1) {
@@ -746,7 +752,7 @@ class MessagesScreen : public UIScreen {
       uint8_t v = dmMelodySlot(ci.id.pub_key);
       v = (dir > 0) ? (v + 1) % 3 : (v + 2) % 3;
       setDmMelody(ci.id.pub_key, v);
-      snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s", ML[v]);
+      snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s", MELODY_LABELS[v]);
       _ctx_dirty = true;
     } else if (sel == _ctx_fav_idx) {
       toggleContactFav(ci);
@@ -764,8 +770,6 @@ class MessagesScreen : public UIScreen {
   // the fav-only filter on, un-favouriting removes this channel from the list,
   // and rebuilding under the open menu would shift _channel_sel onto another one.
   void cycleChannelCtxValue(int sel, int dir) {
-    static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
-    static const char* ML[]           = { "Global", "M1", "M2" };
     if (_num_channels <= 0) return;
     uint8_t ch_idx = _ctx_ch_idx;   // frozen at menu open -- see declaration
     if (sel == 1) {
@@ -778,7 +782,7 @@ class MessagesScreen : public UIScreen {
       uint8_t v = chNotifMelody(ch_idx);
       v = (dir > 0) ? (v + 1) % 3 : (v + 2) % 3;
       setChNotifMelody(ch_idx, v);
-      snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s", ML[v]);
+      snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s", MELODY_LABELS[v]);
       _ctx_dirty = true;
     } else if (sel == _ctx_fav_idx) {
       NodePrefs* p2 = _task->getNodePrefs();
@@ -1118,6 +1122,7 @@ public:
     _pick_bot_room = false;
     _pin_picker_active = false;
     _pin_slot_ch_idx = -1;
+    _ch_delete_confirm_active = false;
     _pick_fav_slot = -1;
     _direct_entry = false;
     _unread_at_entry = 0;
@@ -1995,14 +2000,12 @@ public:
         return true;
       }
       if (c == KEY_CONTEXT_MENU && _num_contacts > 0 && !_room_mode) {
-        static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
         ContactInfo ci;
         the_mesh.getContactByIdx(_sorted[_contact_sel], ci);
         snprintf(_ctx_notif_item, sizeof(_ctx_notif_item), "Notif: %s",
                  NOTIF_LABELS[dmNotifState(ci.id.pub_key)]);
-        { static const char* ML[] = { "Global", "M1", "M2" };
-          snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s",
-                   ML[dmMelodySlot(ci.id.pub_key)]); }
+        snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s",
+                 MELODY_LABELS[dmMelodySlot(ci.id.pub_key)]);
         int pinned_slot = _task->findFavouriteSlot(ci.id.pub_key);
         if (pinned_slot >= 0) snprintf(_ctx_pin_item, sizeof(_ctx_pin_item), "Unpin (slot %d)", pinned_slot + 1);
         else                  snprintf(_ctx_pin_item, sizeof(_ctx_pin_item), "Pin to dial");
@@ -2024,7 +2027,7 @@ public:
       if (_ctx_menu.active) {
         // LEFT/RIGHT -- and Enter, via VALUE_NEXT below -- cycle Notif/Melody/Fav
         // in place; the menu stays open and only Back closes it.
-        if (!_pin_picker_active && (keyIsPrev(c) || keyIsNext(c))) {
+        if (!_pin_picker_active && !_ch_delete_confirm_active && (keyIsPrev(c) || keyIsNext(c))) {
           cycleChannelCtxValue(_ctx_menu.selectedIndex(), keyIsNext(c) ? 1 : -1);
           return true;
         }
@@ -2038,6 +2041,22 @@ public:
             _pin_picker_active = false;
             _pin_slot_ch_idx = -1;
             _task->savePrefsIfDirty(_ctx_dirty);   // Notif/Melody/Fav edits made before Pin was picked
+          }
+          return true;
+        }
+        if (_ch_delete_confirm_active) {
+          // Delete/Cancel sub-menu, defaults to Cancel (see where it's opened).
+          if (res == PopupMenu::SELECTED && _ctx_menu.selectedIndex() == 0) {   // "Delete"
+            ChannelDetails ch;
+            memset(&ch, 0, sizeof(ch));
+            the_mesh.setChannelLocal(_ctx_ch_idx, ch);
+            _task->showAlert("Channel deleted", 1000);
+          }
+          if (res != PopupMenu::NONE) {
+            _ch_delete_confirm_active = false;
+            _task->savePrefsIfDirty(_ctx_dirty);
+            buildChannelList();
+            if (_channel_sel >= _num_channels) _channel_sel = _num_channels > 0 ? _num_channels - 1 : 0;
           }
           return true;
         }
@@ -2071,11 +2090,13 @@ public:
           } else if (sel == 5) {              // Edit
             ChannelDetails ch;
             if (the_mesh.getChannel(ch_idx, ch)) _ch_view.openEdit(ch_idx, ch.name);
-          } else if (sel == 6) {              // Delete
-            ChannelDetails ch;
-            memset(&ch, 0, sizeof(ch));
-            the_mesh.setChannelLocal(ch_idx, ch);
-            _task->showAlert("Channel deleted", 1000);
+          } else if (sel == 6) {              // Delete -- confirm first (destructive)
+            _ctx_menu.begin("Delete channel?", 2);
+            _ctx_menu.addItem("Delete");
+            _ctx_menu.addItem("Cancel");
+            _ctx_menu.setSelected(1);
+            _ch_delete_confirm_active = true;
+            return true;   // list rebuild below would close the submenu
           }
           // sel 1/2/3 are value rows -- Enter never selects them
           // (see cycleChannelCtxValue).
@@ -2125,12 +2146,10 @@ public:
       if (c == KEY_CONTEXT_MENU && _num_channels > 0 && _channel_sel < _num_channels) {
         uint8_t ch_idx = _channel_indices[_channel_sel];
         _ctx_ch_idx = ch_idx;   // freeze the menu's target channel
-        static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
         snprintf(_ctx_notif_item, sizeof(_ctx_notif_item), "Notif: %s",
                  NOTIF_LABELS[chNotifState(ch_idx)]);
-        { static const char* ML[] = { "Global", "M1", "M2" };
-          snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s",
-                   ML[chNotifMelody(ch_idx)]); }
+        snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s",
+                 MELODY_LABELS[chNotifMelody(ch_idx)]);
         { NodePrefs* p2 = _task->getNodePrefs();
           bool is_fav = p2 && (p2->ch_fav_bitmask & (1ULL << ch_idx));
           snprintf(_ctx_fav_item, sizeof(_ctx_fav_item), is_fav ? "Fav: ON" : "Fav: OFF"); }
@@ -2398,3 +2417,6 @@ public:
     return false;
   }
 };
+
+const char* const MessagesScreen::NOTIF_LABELS[3]  = { "Default", "OFF", "ON" };
+const char* const MessagesScreen::MELODY_LABELS[3] = { "Global", "M1", "M2" };

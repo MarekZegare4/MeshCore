@@ -65,7 +65,7 @@ Lists all available home screen pages. For each entry:
 | Setting   | Options    | Notes                                                                                                                                                              |
 | --------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | TX Pwr    | 2–22 dBm   | LEFT/RIGHT. With **Auto pwr** on this is the *ceiling* — the radio may transmit lower. |
-| Preset    | named presets | LEFT/RIGHT cycles community RF presets (region frequency + bandwidth/SF/CR). **Enter** opens a popup to pick one, save the current settings as a named preset, or delete a saved one. Applies frequency, bandwidth, SF and CR together. |
+| Preset    | named presets | LEFT/RIGHT cycles community RF presets (region frequency + bandwidth/SF/CR). **Enter** opens a popup to pick one, save the current settings as a named preset, or delete a saved one — deleting confirms first (defaults to Cancel). Applies frequency, bandwidth, SF and CR together. |
 | Freq      | chip range | **Enter** opens a digit-by-digit editor: LEFT/RIGHT moves between decimal places, UP/DOWN steps that digit. Bounds come from the radio chip's own validated range, so a value the radio would reject can't be entered. |
 | SF        | 5–12       | LEFT/RIGHT. Spreading factor. |
 | BW        | 7.8–500 kHz | LEFT/RIGHT cycles the standard LoRa bandwidths. |

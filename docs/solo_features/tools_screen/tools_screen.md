@@ -123,7 +123,7 @@ Cycle views with **LEFT / RIGHT**:
 | Load trail     | Restore flash trail into RAM                    |
 | Export (live)  | Stream live RAM trail as GPX 1.1 over USB Serial |
 | Export (saved) | Stream saved flash trail as GPX 1.1 over USB Serial |
-| Reset trail    | Clear RAM ring and elapsed time                 |
+| Reset trail    | Clear RAM ring and elapsed time — confirms first (defaults to Cancel) since there's no way back short of a prior **Save trail** |
 
 **Settings…** (values cycle with **LEFT/RIGHT** or **Enter**; shown only where they apply):
 

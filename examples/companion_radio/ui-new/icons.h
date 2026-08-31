@@ -306,7 +306,7 @@ MINI_ICON(ICON_KEY, 5,   // padlock — remote admin (privileged/password-gated 
   packRow("#...#"),
   packRow("#...#"),
   packRow("#####"),
-  packRow("..#.."),
+  packRow("##.##"),
   packRow("#####"));
 MINI_ICON(ICON_PINS, 5,   // 3-pin header — GPIO
   packRow("#.#.#"),
