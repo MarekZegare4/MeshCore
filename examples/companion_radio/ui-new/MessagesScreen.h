@@ -2091,10 +2091,7 @@ public:
             ChannelDetails ch;
             if (the_mesh.getChannel(ch_idx, ch)) _ch_view.openEdit(ch_idx, ch.name);
           } else if (sel == 6) {              // Delete -- confirm first (destructive)
-            _ctx_menu.begin("Delete channel?", 2);
-            _ctx_menu.addItem("Delete");
-            _ctx_menu.addItem("Cancel");
-            _ctx_menu.setSelected(1);
+            _ctx_menu.beginConfirm("Delete channel?", "Delete");
             _ch_delete_confirm_active = true;
             return true;   // list rebuild below would close the submenu
           }

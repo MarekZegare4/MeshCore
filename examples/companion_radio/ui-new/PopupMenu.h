@@ -49,6 +49,19 @@ struct PopupMenu {
     if (_count > i) _value_mask |= (1u << i);
   }
 
+  // A two-row Action/Cancel confirm for a destructive or hard-to-reverse
+  // action, defaulting the highlight to Cancel (row 1) so accepting it takes
+  // a deliberate move up. Same shape every such confirm in the UI uses --
+  // see NearbyScreen's contact-delete confirm, AdminScreen's OTA-start
+  // confirm, Trail's reset confirm, Messages' channel-delete confirm, and
+  // RadioPresetPicker's preset-delete confirm.
+  void beginConfirm(const char* title, const char* action_label, const char* cancel_label = "Cancel") {
+    begin(title, 2);
+    addItem(action_label);
+    addItem(cancel_label);
+    setSelected(1);
+  }
+
   int render(DisplayDriver& display) {
     // Everything is derived from the live font metrics so the box fits its
     // content on every display — including landscape e-ink, where the font (and

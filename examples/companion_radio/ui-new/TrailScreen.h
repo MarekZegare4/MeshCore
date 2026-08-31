@@ -405,10 +405,7 @@ private:
   void buildResetConfirmMenu() {
     _menu_level = ML_CONFIRM_RESET;
     _act_count  = 0;
-    _action_menu.begin("Reset trail?", 2);
-    _action_menu.addItem("Reset");
-    _action_menu.addItem("Cancel");
-    _action_menu.setSelected(1);
+    _action_menu.beginConfirm("Reset trail?", "Reset");
   }
 
   // Trail-file submenu — only the operations that make sense right now.

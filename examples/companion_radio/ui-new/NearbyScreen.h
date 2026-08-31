@@ -468,11 +468,7 @@ class NearbyScreen : public UIScreen {
   void startDeleteConfirm() {
     const Entry* e = selected();
     if (!e || !e->has_key || !entryIsContact(e)) return;
-    _confirm.begin("Delete contact?", 2);
-    _confirm.addItem("Delete");
-    _confirm.addItem("Cancel");
-    _confirm.setSelected(1);
-    _confirm.active = true;
+    _confirm.beginConfirm("Delete contact?", "Delete");
   }
 
   void doDeleteSelected() {

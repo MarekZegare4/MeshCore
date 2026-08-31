@@ -238,10 +238,7 @@ class AdminScreen : public UIScreen {
     } else if (f.set_prefix == nullptr) {                            // Action
       if (!strcmp(f.get_cmd, "start ota")) {                         // see _confirm's comment
         _pending_confirm_field = &f;
-        _confirm.begin("Start OTA update?", 2);
-        _confirm.addItem("Start");
-        _confirm.addItem("Cancel");
-        _confirm.setSelected(1);   // default highlight = Cancel
+        _confirm.beginConfirm("Start OTA update?", "Start");
         return;
       }
       strncpy(_cmd_text, f.get_cmd, sizeof(_cmd_text) - 1);

@@ -131,12 +131,8 @@ struct RadioPresetPicker {
   // is picked, onSelected() below is terminal -- the whole picker closes,
   // same as it already does after a built-in/user preset pick.
   void openConfirm(uint8_t slot) {
-    menu.begin("Delete preset?", 2);
-    menu.addItem("Delete");
-    menu.addItem("Cancel");
-    menu.setSelected(1);
+    menu.beginConfirm("Delete preset?", "Delete");
     confirm_slot = slot;
-    deleting = false;
   }
 
   // Handle the index the popup reports as SELECTED. Mutates target fields on a
