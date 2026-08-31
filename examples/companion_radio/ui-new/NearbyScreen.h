@@ -567,6 +567,7 @@ class NearbyScreen : public UIScreen {
     return e && ((e->contact_idx >= 0) || (_source == SRC_SCAN && e->is_known));
   }
 
+  char _fav_label[12];   // "Fav: ON" / "Fav: OFF" -- rewritten in place by L/R
   char _pin_label[24];   // "Pin to dial" / "Unpin (slot N)" -- _menu stores the pointer
 
   void openActionMenu() {
@@ -589,6 +590,10 @@ class NearbyScreen : public UIScreen {
       _menu.addItem(label);
       _menu_actions[_menu_action_count++] = a;
     };
+    auto addValue = [&](const char* label, Action a) {
+      _menu.addValueItem(label);
+      _menu_actions[_menu_action_count++] = a;
+    };
 
     if (has_gps) add("Navigate",      ACT_NAV);
     if (has_key) add("Ping",          ACT_PING);
@@ -597,7 +602,10 @@ class NearbyScreen : public UIScreen {
     // by pubkey prefix, so a name-only live-scan/channel row can't offer this.
     if (has_gps && has_key) add("Set as target", ACT_LOCATOR);
     if (can_add)            add("Add contact", ACT_ADD);
-    if (is_contact && has_key) add(e->fav ? "Fav: ON" : "Fav: OFF", ACT_FAV);
+    if (is_contact && has_key) {
+      snprintf(_fav_label, sizeof(_fav_label), e->fav ? "Fav: ON" : "Fav: OFF");
+      addValue(_fav_label, ACT_FAV);
+    }
     if (is_contact && has_key) {
       if (is_pinned) snprintf(_pin_label, sizeof(_pin_label), "Unpin (slot %d)",
                               _task->findFavouriteSlot(e->pub_key) + 1);
@@ -606,8 +614,33 @@ class NearbyScreen : public UIScreen {
     }
     if (is_admin_target)       add("Admin", ACT_ADMIN);
     if (is_contact && has_key) add("Delete contact", ACT_DELETE);
-    if (stored) add(_sort_label, ACT_SORT);   // sort is meaningless for live-scan rows
+    if (stored) addValue(_sort_label, ACT_SORT);   // sort is meaningless for live-scan rows
     add(stored ? "Discover scan" : "Rescan", ACT_SCAN);
+  }
+
+  // Flip the selected contact's favourite flag and retitle the open menu row.
+  // The list re-sorts underneath (favourites first), but refreshKeepingSelection()
+  // re-finds this node, so the popup stays anchored to it.
+  void toggleFavSelected() {
+    const Entry* e = selected();
+    if (!e || !e->has_key) return;
+    bool now_fav = !e->fav;
+    if (!the_mesh.setContactFavourite(e->pub_key, now_fav)) return;
+    snprintf(_fav_label, sizeof(_fav_label), now_fav ? "Fav: ON" : "Fav: OFF");
+    refreshKeepingSelection();
+  }
+
+  // Advance the value on the menu's value rows (Sort, Fav). Both are two-state,
+  // so LEFT and RIGHT do the same thing here and Enter joins them.
+  void cycleMenuValue(int i) {
+    if (i < 0 || i >= _menu_action_count) return;
+    if (_menu_actions[i] == ACT_SORT) {
+      _sort = (_sort == SORT_DIST) ? SORT_TIME : SORT_DIST;
+      buildSortLabel();
+      refresh();
+    } else if (_menu_actions[i] == ACT_FAV) {
+      toggleFavSelected();
+    }
   }
 
   void runAction(Action a) {
@@ -644,11 +677,7 @@ class NearbyScreen : public UIScreen {
         }
         break;
       }
-      case ACT_FAV: {
-        const Entry* e = selected();
-        if (e && e->has_key && the_mesh.setContactFavourite(e->pub_key, !e->fav)) refreshKeepingSelection();
-        break;
-      }
+      case ACT_FAV:      break;  // value rows -- see cycleMenuValue()
       case ACT_PIN: {
         const Entry* e = selected();
         if (e && e->has_key) togglePinToDial(e->pub_key);
@@ -662,7 +691,7 @@ class NearbyScreen : public UIScreen {
           _task->openAdminFor(ci, false);   // direct from Nodes -- Cancel should return here, not to a pick-list
         break;
       }
-      case ACT_SORT:     break;  // adjusted in-place via LEFT/RIGHT, not ENTER
+      case ACT_SORT:     break;  // value rows -- see cycleMenuValue()
       case ACT_SCAN:     enterScan();            break;
     }
   }
@@ -951,23 +980,19 @@ public:
     }
     if (_ping_menu.active)   { handlePingMenuInput(c); return true; }
     if (_menu.active) {
-      // LEFT/RIGHT on the Sort row toggles the value in-place and rebuilds the
-      // label; the popup stays open so the user can keep tapping. Other rows
-      // swallow L/R. ENTER on Sort just closes (value changes via L/R only).
+      // LEFT/RIGHT -- and Enter, which PopupMenu reports as VALUE_NEXT on a
+      // value row -- cycle Sort and Fav in place; the popup stays open so the
+      // user can keep tapping, and only Back closes it. Other rows swallow L/R.
       if (keyIsPrev(c) || keyIsNext(c)) {
-        int i = _menu.selectedIndex();
-        if (i >= 0 && i < _menu_action_count && _menu_actions[i] == ACT_SORT) {
-          _sort = (_sort == SORT_DIST) ? SORT_TIME : SORT_DIST;
-          buildSortLabel();
-          refresh();
-        }
+        cycleMenuValue(_menu.selectedIndex());
         return true;
       }
       auto res = _menu.handleInput(c);
-      if (res == PopupMenu::SELECTED) {
+      if (res == PopupMenu::VALUE_NEXT) {
+        cycleMenuValue(_menu.selectedIndex());
+      } else if (res == PopupMenu::SELECTED) {
         int i = _menu.selectedIndex();
-        if (i >= 0 && i < _menu_action_count && _menu_actions[i] != ACT_SORT)
-          runAction(_menu_actions[i]);
+        if (i >= 0 && i < _menu_action_count) runAction(_menu_actions[i]);
       }
       return true;
     }

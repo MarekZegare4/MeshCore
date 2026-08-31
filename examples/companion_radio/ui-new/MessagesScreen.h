@@ -722,6 +722,68 @@ class MessagesScreen : public UIScreen {
     }
   }
 
+  // Advance one of the contact menu's value rows. dir is +1 for RIGHT and for
+  // Enter (which PopupMenu reports as VALUE_NEXT on a value row), -1 for LEFT.
+  void cycleContactCtxValue(int sel, int dir) {
+    static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
+    static const char* ML[]           = { "Global", "M1", "M2" };
+    ContactInfo ci;
+    if (_num_contacts <= 0 || !the_mesh.getContactByIdx(_sorted[_contact_sel], ci)) return;
+    if (sel == 1) {
+      uint8_t v = dmNotifState(ci.id.pub_key);
+      v = (dir > 0) ? (v + 1) % 3 : (v + 2) % 3;
+      setDmNotifState(ci.id.pub_key, v);
+      snprintf(_ctx_notif_item, sizeof(_ctx_notif_item), "Notif: %s", NOTIF_LABELS[v]);
+      _ctx_dirty = true;
+    } else if (sel == 2) {
+      uint8_t v = dmMelodySlot(ci.id.pub_key);
+      v = (dir > 0) ? (v + 1) % 3 : (v + 2) % 3;
+      setDmMelody(ci.id.pub_key, v);
+      snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s", ML[v]);
+      _ctx_dirty = true;
+    } else if (sel == _ctx_fav_idx) {
+      toggleContactFav(ci);
+    }
+  }
+
+  // Same, for the room menu -- its only value row is Fav.
+  void cycleRoomCtxValue(int sel) {
+    ContactInfo ci;
+    if (sel != _ctx_fav_idx || _num_contacts <= 0) return;
+    if (the_mesh.getContactByIdx(_sorted[_contact_sel], ci)) toggleContactFav(ci);
+  }
+
+  // Same, for the channel menu. The list rebuild is deferred to menu close: with
+  // the fav-only filter on, un-favouriting removes this channel from the list,
+  // and rebuilding under the open menu would shift _channel_sel onto another one.
+  void cycleChannelCtxValue(int sel, int dir) {
+    static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
+    static const char* ML[]           = { "Global", "M1", "M2" };
+    if (_num_channels <= 0) return;
+    uint8_t ch_idx = _ctx_ch_idx;   // frozen at menu open -- see declaration
+    if (sel == 1) {
+      uint8_t v = chNotifState(ch_idx);
+      v = (dir > 0) ? (v + 1) % 3 : (v + 2) % 3;
+      setChNotifState(ch_idx, v);
+      snprintf(_ctx_notif_item, sizeof(_ctx_notif_item), "Notif: %s", NOTIF_LABELS[v]);
+      _ctx_dirty = true;
+    } else if (sel == 2) {
+      uint8_t v = chNotifMelody(ch_idx);
+      v = (dir > 0) ? (v + 1) % 3 : (v + 2) % 3;
+      setChNotifMelody(ch_idx, v);
+      snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s", ML[v]);
+      _ctx_dirty = true;
+    } else if (sel == _ctx_fav_idx) {
+      NodePrefs* p2 = _task->getNodePrefs();
+      if (p2) {
+        p2->ch_fav_bitmask ^= (1ULL << ch_idx);
+        bool is_fav = (p2->ch_fav_bitmask & (1ULL << ch_idx));
+        snprintf(_ctx_fav_item, sizeof(_ctx_fav_item), is_fav ? "Fav: ON" : "Fav: OFF");
+        _ctx_dirty = true;
+      }
+    }
+  }
+
   bool chIsFav(uint8_t ch_idx) const {
     NodePrefs* p = _task->getNodePrefs();
     return p && (p->ch_fav_bitmask & (1ULL << ch_idx)) != 0;
@@ -1721,9 +1783,9 @@ public:
     // Channel Add/Edit form consumes all input while active.
     if (_ch_view.active()) return _ch_view.handleInput(c);
 
-    // Navigate view: any back key returns to the message it was opened from.
+    // Navigate view: Back or Enter returns to the message it was opened from.
     if (_nav_active) {
-      if (c == KEY_CANCEL || c == KEY_ENTER || c == KEY_CONTEXT_MENU) _nav_active = false;
+      if (c == KEY_CANCEL || c == KEY_ENTER) _nav_active = false;
       return true;
     }
     if (_phase == MODE_SELECT) {
@@ -1787,14 +1849,17 @@ public:
           return true;
         }
         if (_room_mode) {
-          // LEFT/RIGHT toggle Fav in-place (menu stays open), as in the other menus.
-          if ((keyIsPrev(c) || keyIsNext(c)) && _num_contacts > 0 &&
-              _ctx_menu.selectedIndex() == _ctx_fav_idx) {
-            ContactInfo ci;
-            if (the_mesh.getContactByIdx(_sorted[_contact_sel], ci)) toggleContactFav(ci);
+          // LEFT/RIGHT -- and Enter, via VALUE_NEXT -- toggle Fav in place; the
+          // menu stays open and only Back closes it.
+          if (keyIsPrev(c) || keyIsNext(c)) {
+            cycleRoomCtxValue(_ctx_menu.selectedIndex());
             return true;
           }
           auto res = _ctx_menu.handleInput(c);
+          if (res == PopupMenu::VALUE_NEXT) {
+            cycleRoomCtxValue(_ctx_menu.selectedIndex());
+            return true;   // still open -- the list rebuild below waits for close
+          }
           if (res == PopupMenu::SELECTED && _num_contacts > 0) {
             if (the_mesh.getContactByIdx(_sorted[_contact_sel], _sel_contact)) {
               int sel = _ctx_menu.selectedIndex();
@@ -1812,7 +1877,7 @@ public:
                 forgetRoomLoggedIn(_sel_contact.id.pub_key);
                 _task->showAlert("Logged out", 1000);
               }
-              // Fav row: already toggled by LEFT/RIGHT, ENTER just closes.
+              // Fav is a value row -- Enter never selects it (see cycleRoomCtxValue).
             }
           }
           if (res != PopupMenu::NONE && _phase == CONTACT_PICK) {
@@ -1822,36 +1887,17 @@ public:
           }
           return true;
         }
-        // LEFT/RIGHT cycle Notif/Melody in-place (menu stays open).
-        if (_num_contacts > 0) {
-          bool left  = keyIsPrev(c);
-          bool right = keyIsNext(c);
-          if (left || right) {
-            static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
-            static const char* ML[]           = { "Global", "M1", "M2" };
-            ContactInfo ci;
-            if (the_mesh.getContactByIdx(_sorted[_contact_sel], ci)) {
-              int sel = _ctx_menu.selectedIndex();
-              if (sel == 1) {
-                uint8_t v = dmNotifState(ci.id.pub_key);
-                v = right ? (v + 1) % 3 : (v + 2) % 3;
-                setDmNotifState(ci.id.pub_key, v);
-                snprintf(_ctx_notif_item, sizeof(_ctx_notif_item), "Notif: %s", NOTIF_LABELS[v]);
-                _ctx_dirty = true;
-              } else if (sel == 2) {
-                uint8_t v = dmMelodySlot(ci.id.pub_key);
-                v = right ? (v + 1) % 3 : (v + 2) % 3;
-                setDmMelody(ci.id.pub_key, v);
-                snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s", ML[v]);
-                _ctx_dirty = true;
-              } else if (sel == _ctx_fav_idx) {
-                toggleContactFav(ci);
-              }
-            }
-            return true;
-          }
+        // LEFT/RIGHT -- and Enter, via VALUE_NEXT -- cycle Notif/Melody/Fav in
+        // place; the menu stays open and only Back closes it.
+        if (keyIsPrev(c) || keyIsNext(c)) {
+          cycleContactCtxValue(_ctx_menu.selectedIndex(), keyIsNext(c) ? 1 : -1);
+          return true;
         }
         auto res = _ctx_menu.handleInput(c);
+        if (res == PopupMenu::VALUE_NEXT) {
+          cycleContactCtxValue(_ctx_menu.selectedIndex(), 1);
+          return true;   // still open -- the save/rebuild below waits for close
+        }
         if (res == PopupMenu::SELECTED && _num_contacts > 0) {
           ContactInfo ci;
           if (the_mesh.getContactByIdx(_sorted[_contact_sel], ci)) {
@@ -1863,7 +1909,8 @@ public:
             } else if (sel == 4) {
               pinContactAction(ci);
             }
-            // sel 1 (Notif), 2 (Melody), 3 (Fav): already cycled via LEFT/RIGHT; ENTER just closes.
+            // sel 1 (Notif), 2 (Melody), 3 (Fav) are value rows -- Enter never
+            // selects them (see cycleContactCtxValue).
           }
         }
         if (res != PopupMenu::NONE) {
@@ -1935,7 +1982,7 @@ public:
         _ctx_menu.addItem("Login...");
         if (logged_in) _ctx_menu.addItem("Logout");
         _ctx_fav_idx = logged_in ? 2 : 1;
-        _ctx_menu.addItem(_ctx_fav_item);
+        _ctx_menu.addValueItem(_ctx_fav_item);
         _ctx_pin_idx = _ctx_fav_idx + 1;
         _ctx_menu.addItem(_ctx_pin_item);
         return true;
@@ -1956,10 +2003,10 @@ public:
                  (ci.flags & 0x01) ? "Fav: ON" : "Fav: OFF");
         _ctx_menu.begin("Contact options", 3);
         _ctx_menu.addItem("Mark as read");
-        _ctx_menu.addItem(_ctx_notif_item);
-        _ctx_menu.addItem(_ctx_melody_item);
+        _ctx_menu.addValueItem(_ctx_notif_item);
+        _ctx_menu.addValueItem(_ctx_melody_item);
         _ctx_fav_idx = 3;
-        _ctx_menu.addItem(_ctx_fav_item);
+        _ctx_menu.addValueItem(_ctx_fav_item);
         _ctx_menu.addItem(_ctx_pin_item);
         _ctx_dirty = false;
         return true;
@@ -1968,42 +2015,11 @@ public:
     } else if (_phase == CHANNEL_PICK) {
       // Context menu consumes all input while open
       if (_ctx_menu.active) {
-        // LEFT/RIGHT cycle Notif/Melody/Fav in-place (menu stays open).
-        if (!_pin_picker_active && _num_channels > 0) {
-          bool left  = keyIsPrev(c);
-          bool right = keyIsNext(c);
-          if (left || right) {
-            static const char* NOTIF_LABELS[] = { "Default", "OFF", "ON" };
-            static const char* ML[]           = { "Global", "M1", "M2" };
-            uint8_t ch_idx = _ctx_ch_idx;   // frozen at menu open — see declaration
-            int sel = _ctx_menu.selectedIndex();
-            if (sel == 1) {
-              uint8_t v = chNotifState(ch_idx);
-              v = right ? (v + 1) % 3 : (v + 2) % 3;
-              setChNotifState(ch_idx, v);
-              snprintf(_ctx_notif_item, sizeof(_ctx_notif_item), "Notif: %s", NOTIF_LABELS[v]);
-              _ctx_dirty = true;
-            } else if (sel == 2) {
-              uint8_t v = chNotifMelody(ch_idx);
-              v = right ? (v + 1) % 3 : (v + 2) % 3;
-              setChNotifMelody(ch_idx, v);
-              snprintf(_ctx_melody_item, sizeof(_ctx_melody_item), "Melody: %s", ML[v]);
-              _ctx_dirty = true;
-            } else if (sel == _ctx_fav_idx) {
-              NodePrefs* p2 = _task->getNodePrefs();
-              if (p2) {
-                p2->ch_fav_bitmask ^= (1ULL << ch_idx);
-                bool is_fav = (p2->ch_fav_bitmask & (1ULL << ch_idx));
-                snprintf(_ctx_fav_item, sizeof(_ctx_fav_item), is_fav ? "Fav: ON" : "Fav: OFF");
-                _ctx_dirty = true;
-                // List rebuild is deferred to menu close: with the fav-only
-                // filter on, un-favouriting this channel removes it from the
-                // list, and rebuilding under the open menu would shift
-                // _channel_sel onto a different channel mid-interaction.
-              }
-            }
-            return true;
-          }
+        // LEFT/RIGHT -- and Enter, via VALUE_NEXT below -- cycle Notif/Melody/Fav
+        // in place; the menu stays open and only Back closes it.
+        if (!_pin_picker_active && (keyIsPrev(c) || keyIsNext(c))) {
+          cycleChannelCtxValue(_ctx_menu.selectedIndex(), keyIsNext(c) ? 1 : -1);
+          return true;
         }
         auto res = _ctx_menu.handleInput(c);
         if (_pin_picker_active) {
@@ -2017,6 +2033,10 @@ public:
             _task->savePrefsIfDirty(_ctx_dirty);   // Notif/Melody/Fav edits made before Pin was picked
           }
           return true;
+        }
+        if (res == PopupMenu::VALUE_NEXT) {
+          cycleChannelCtxValue(_ctx_menu.selectedIndex(), 1);
+          return true;   // still open -- the save/rebuild below waits for close
         }
         if (res == PopupMenu::SELECTED && _num_channels > 0) {
           uint8_t ch_idx = _ctx_ch_idx;   // frozen at menu open — see declaration
@@ -2050,7 +2070,8 @@ public:
             the_mesh.setChannelLocal(ch_idx, ch);
             _task->showAlert("Channel deleted", 1000);
           }
-          // sel 1/2/3 already handled by LEFT/RIGHT; ENTER just closes.
+          // sel 1/2/3 are value rows -- Enter never selects them
+          // (see cycleChannelCtxValue).
         }
         if (res != PopupMenu::NONE) {
           _task->savePrefsIfDirty(_ctx_dirty);
@@ -2111,10 +2132,10 @@ public:
           else                  snprintf(_ctx_pin_item, sizeof(_ctx_pin_item), "Pin to dial"); }
         _ctx_menu.begin("Channel options", 6);
         _ctx_menu.addItem("Mark all read");
-        _ctx_menu.addItem(_ctx_notif_item);
-        _ctx_menu.addItem(_ctx_melody_item);
+        _ctx_menu.addValueItem(_ctx_notif_item);
+        _ctx_menu.addValueItem(_ctx_melody_item);
         _ctx_fav_idx = 3;
-        _ctx_menu.addItem(_ctx_fav_item);
+        _ctx_menu.addValueItem(_ctx_fav_item);
         _ctx_menu.addItem(_ctx_pin_item);
         _ctx_menu.addItem("Edit");
         _ctx_menu.addItem("Delete");

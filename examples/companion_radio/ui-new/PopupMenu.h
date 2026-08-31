@@ -16,20 +16,37 @@ struct PopupMenu {
   int         _cap;       // actual visible cap, recomputed each render()
   bool        active;
   const char* _title;
+  // Rows added via addValueItem(): they carry a value the caller cycles rather
+  // than an action to run, so Enter advances the value and leaves the menu open
+  // (see handleInput). One bit per row; PM_MAX_ITEMS fits in a uint32_t.
+  uint32_t    _value_mask;
 
-  enum Result { NONE, SELECTED, CANCELLED };
+  // VALUE_NEXT: Enter landed on a value row -- caller advances that row's value
+  // (same as its RIGHT step) and the menu stays open.
+  enum Result { NONE, SELECTED, CANCELLED, VALUE_NEXT };
 
-  PopupMenu() : _count(0), _sel(0), _scroll(0), _cap(3), active(false), _title(nullptr) {}
+  PopupMenu() : _count(0), _sel(0), _scroll(0), _cap(3), active(false), _title(nullptr),
+                _value_mask(0) {}
 
   // `visible` is only a seed for the first frame: render() recomputes _cap from
   // the live display height, so it does not cap or pad the item list.
   void begin(const char* title, int visible = 3) {
     _count = 0; _sel = 0; _scroll = 0;
     _cap = visible; active = true; _title = title;
+    _value_mask = 0;
   }
 
   void addItem(const char* item) {
     if (_count < PM_MAX_ITEMS) _items[_count++] = item;
+  }
+
+  // A row whose label shows a value ("Notif: ON", "Sort: Dist"). LEFT/RIGHT are
+  // the caller's to handle as always; this only makes Enter behave like RIGHT
+  // instead of picking the row and closing.
+  void addValueItem(const char* item) {
+    int i = _count;
+    addItem(item);
+    if (_count > i) _value_mask |= (1u << i);
   }
 
   int render(DisplayDriver& display) {
@@ -134,8 +151,13 @@ struct PopupMenu {
     // Selection only moves here; render() keeps it scrolled into view.
     if (c == KEY_UP)   { _sel = (_sel > 0) ? _sel - 1 : _count - 1; return NONE; }
     if (c == KEY_DOWN) { _sel = (_sel < _count - 1) ? _sel + 1 : 0; return NONE; }
-    if (c == KEY_ENTER)                           { active = false; return SELECTED;  }
-    if (c == KEY_CANCEL || c == KEY_CONTEXT_MENU) { active = false; return CANCELLED; }
+    if (c == KEY_ENTER) {
+      if (_value_mask & (1u << _sel)) return VALUE_NEXT;   // value row -- stays open
+      active = false; return SELECTED;
+    }
+    // Only Back closes a popup. Hold-Enter opens menus and cycles value rows;
+    // it is deliberately not a second way to go back.
+    if (c == KEY_CANCEL) { active = false; return CANCELLED; }
     return NONE;
   }
 

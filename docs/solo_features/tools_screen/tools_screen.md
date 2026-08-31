@@ -41,10 +41,10 @@ Select a node to see its coordinates, distance, bearing with cardinal direction,
 | Ping                   | a public key is known for the node                                                     |
 | Save waypoint          | selected node has GPS                                                                   |
 | Set as target          | selected node has GPS **and** a public key — pins it as the active **Locator/Nav target** right away (see **Locator**) |
-| Fav: ON / OFF          | selected node is a saved contact — the same starred flag the Messages lists use, shared with the companion app |
+| Fav: ON / OFF          | selected node is a saved contact — **LEFT/RIGHT** or **Enter** toggles it in place, as in the Messages menus; the same starred flag those lists use, shared with the companion app |
 | Pin to dial / Unpin (slot N) | selected node is a saved contact — puts it on the [Favourites Dial](../favourites_dial/favourites_dial.md), taking the first free slot |
 | Admin                  | selected node is a saved **repeater or room server** contact — opens **Tools › Admin** for it directly (see **Admin**) |
-| Sort: Dist/Recent      | browsing stored nodes — **LEFT/RIGHT** on the row flips distance ↔ last-heard in place |
+| Sort: Dist/Recent      | browsing stored nodes — **LEFT/RIGHT** or **Enter** flips distance ↔ last-heard in place |
 | Discover scan / Rescan | always (live `NODE_DISCOVER_REQ` scan)                                                  |
 
 Filtering stays on the list itself (**LEFT/RIGHT** cycles the type), so there is no separate Filter action in the menu. **Sort** is adjusted in place: highlight the **Sort** row and tap **LEFT/RIGHT** to flip the list (and its right-hand column) between **distance** and **last-heard** without closing the menu — the same in-popup pattern as Trail's settings. The row appears only while browsing stored nodes (live-scan rows carry signal, not distance). Filter and sort are independent and **persist** across re-entry to the screen.
@@ -350,8 +350,8 @@ Each melody supports up to 32 notes:
 | ------------ | ----------- | -------------------------------------- |
 | Play / Stop  | Enter       | Preview the melody                     |
 | Melody 1 / 2 | Enter       | Switch to the other slot               |
-| Duration     | LEFT/RIGHT  | Cycle duration for selected note       |
-| BPM          | LEFT/RIGHT  | Cycle tempo                            |
+| Duration     | LEFT/RIGHT or Enter | Cycle duration for selected note |
+| BPM          | LEFT/RIGHT or Enter | Step tempo (stops at each end)  |
 | Insert       | Enter       | Insert a new note after the cursor     |
 | Delete       | Enter       | Delete the note at cursor              |
 | Save & Exit  | Enter       | Persist the melody and return to Tools |

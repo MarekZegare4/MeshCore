@@ -267,7 +267,7 @@ public:
     bool up    = (c == KEY_UP);
     bool down  = (c == KEY_DOWN);
     bool enter = (c == KEY_ENTER);
-    bool cancel = (c == KEY_CANCEL || c == KEY_CONTEXT_MENU);
+    bool cancel = (c == KEY_CANCEL);
 
     if (_kb_row >= 0) {
       auto res = _kb->handleInput(c);

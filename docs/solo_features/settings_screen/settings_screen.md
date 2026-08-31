@@ -8,7 +8,7 @@
 | :-----------------------: | :-----------------------: |
 | ![](./overview_oled.png) | ![](./overview_eink.png) |
 
-All settings are saved to flash and restored on next boot. Settings are organised into collapsible sections. Press **Enter** on a section header to expand or collapse it — all sections start collapsed for faster navigation. Press **LEFT/RIGHT** to change a value, or **Enter** for toggle items.
+All settings are saved to flash and restored on next boot. Settings are organised into collapsible sections. Press **Enter** on a section header to expand or collapse it — all sections start collapsed for faster navigation. Press **LEFT/RIGHT** to change a value. **Enter** advances any row whose options wrap around — toggles, melodies, and option lists like Auto-off. Rows that ramp between fixed ends (Brightness, Volume, TX Pwr, Timezone, SF / BW / CR) are LEFT/RIGHT only, since there is nothing to wrap to.
 
 Press **Cancel/Back** to save and return to the home screen.
 
@@ -19,7 +19,7 @@ Press **Cancel/Back** to save and return to the home screen.
 | Setting                              | Options                          | Notes                                                                                                 |
 | ------------------------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | Brightness                           | 1–5                              | LEFT/RIGHT; preview applies immediately                                                               |
-| Auto-off                             | 5 s / 15 s / 30 s / 60 s / never | LEFT/RIGHT                                                                                            |
+| Auto-off                             | 5 s / 15 s / 30 s / 60 s / never | LEFT/RIGHT, or **Enter** to advance                                                                   |
 | Auto-lock                            | ON / OFF                         | Locks device when display turns off                                                                   |
 | Battery                              | icon / % / V                     | Display mode for the top-bar battery indicator                                                        |
 | Clock seconds                        | show / hide                      | Hiding reduces OLED refresh from 1 s to 60 s                                                          |

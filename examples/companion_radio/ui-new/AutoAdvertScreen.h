@@ -50,7 +50,7 @@ public:
   }
 
   bool handleInput(char c) override {
-    if (c == KEY_CANCEL || c == KEY_CONTEXT_MENU) {
+    if (c == KEY_CANCEL) {
       _task->savePrefsIfDirty(_dirty);
       _task->gotoToolsScreen();
       return true;

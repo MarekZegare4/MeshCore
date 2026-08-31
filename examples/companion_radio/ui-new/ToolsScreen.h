@@ -108,7 +108,7 @@ public:
   }
 
   bool handleInput(char c) override {
-    if (c == KEY_CANCEL || c == KEY_CONTEXT_MENU) { _task->gotoHomeScreen(); return true; }
+    if (c == KEY_CANCEL) { _task->gotoHomeScreen(); return true; }
     switch (_acc.handleInput(c)) {
       case AccordionList::ACTIVATED: {
         const AccordionList::Row& r = _acc.selected();

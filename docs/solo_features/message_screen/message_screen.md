@@ -102,6 +102,8 @@ Selecting the row opens a read-only list of the resolved hops — each shown as 
 
 **Hold Enter** on a contact entry opens a context menu:
 
+> Rows that show a value (`Notif:`, `Melody:`, `Fav:`) are changed in place — **LEFT/RIGHT** steps the value and **Enter** advances it, with the menu staying open. Only **Back** closes the menu. The same rule holds in every context menu on the device.
+
 |           OLED            |           E-Ink           |
 | :-----------------------: | :-----------------------: |
 | ![](./ctx_contact_oled.png) | ![](./ctx_contact_eink.png) |
@@ -109,9 +111,9 @@ Selecting the row opens a read-only list of the resolved hops — each shown as 
 | Item                         | Action                                                                         |
 | ---------------------------- | ------------------------------------------------------------------------------ |
 | Mark as read                 | Clears unread counter for this contact                                         |
-| Notif: Default / OFF / ON    | Per-contact notification override — **LEFT/RIGHT** to cycle                    |
-| Melody: Global / M1 / M2     | Per-contact melody override — **LEFT/RIGHT** to cycle                          |
-| Fav: ON / OFF                | Mark this contact as a favourite — **LEFT/RIGHT** to toggle                    |
+| Notif: Default / OFF / ON    | Per-contact notification override — **LEFT/RIGHT** or **Enter** to cycle                    |
+| Melody: Global / M1 / M2     | Per-contact melody override — **LEFT/RIGHT** or **Enter** to cycle                          |
+| Fav: ON / OFF                | Mark this contact as a favourite — **LEFT/RIGHT** or **Enter** to toggle                    |
 | Pin to dial / Unpin (slot N) | Pin this contact to a Favourites Dial slot; if already pinned shows which slot |
 
 **Fav** and **Pin to dial** are separate. **Fav** is the starred flag shared with the companion app: it marks the row with a ★, sorts it above the rest of the list (unless **Settings › Contacts › Favs top** is off), and drives the `DMs = Fav` list filter. **Pin to dial** puts the contact on the [Favourites Dial](../favourites_dial/favourites_dial.md) page and changes nothing about the list.
@@ -124,7 +126,7 @@ In the **Rooms** list the context menu instead offers:
 | ------------- | ---------------------------------------------------------------------------- |
 | Login…        | Opens the password prompt to (re-)log in to this room (see Rooms — logging in) |
 | Logout        | Only shown once logged in. Forgets the saved password so the next open prompts for one again |
-| Fav: ON / OFF | Mark this room as a favourite — **LEFT/RIGHT** to toggle; drives the **Rooms = Fav** list filter |
+| Fav: ON / OFF | Mark this room as a favourite — **LEFT/RIGHT** or **Enter** to toggle; drives the **Rooms = Fav** list filter |
 | Pin to dial / Unpin (slot N) | Pin this room to a [Favourites Dial](../favourites_dial/favourites_dial.md) slot |
 
 ---
@@ -140,9 +142,9 @@ In the **Rooms** list the context menu instead offers:
 | Item                      | Action                                                                |
 | ------------------------- | --------------------------------------------------------------------- |
 | Mark all read             | Clears all unread for this channel                                    |
-| Notif: Default / OFF / ON | Per-channel notification override — **LEFT/RIGHT** to cycle           |
-| Melody: Global / M1 / M2  | Per-channel melody override — **LEFT/RIGHT** to cycle                 |
-| Fav: ON / OFF             | Add or remove this channel from favourites — **LEFT/RIGHT** to toggle |
+| Notif: Default / OFF / ON | Per-channel notification override — **LEFT/RIGHT** or **Enter** to cycle           |
+| Melody: Global / M1 / M2  | Per-channel melody override — **LEFT/RIGHT** or **Enter** to cycle                 |
+| Fav: ON / OFF             | Add or remove this channel from favourites — **LEFT/RIGHT** or **Enter** to toggle |
 | Pin to dial / Unpin (slot N) | Pin this channel to a [Favourites Dial](../favourites_dial/favourites_dial.md) slot |
 | Edit                      | Opens the Add/Edit form below, pre-filled with the channel's name    |
 | Delete                    | Removes the channel immediately (no confirm prompt)                   |

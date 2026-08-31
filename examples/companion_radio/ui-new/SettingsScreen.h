@@ -959,9 +959,9 @@ public:
 #if AUTO_OFF_MILLIS > 0
     if (_selected == AUTO_OFF && p) {
       int idx = autoOffIndex();
-      if (right) idx = (idx + 1) % AUTO_OFF_COUNT;
-      if (left)  idx = (idx + AUTO_OFF_COUNT - 1) % AUTO_OFF_COUNT;
-      if (left || right) { p->auto_off_secs = AUTO_OFF_OPTS[idx]; _dirty = true; return true; }
+      if (right || enter) idx = (idx + 1) % AUTO_OFF_COUNT;
+      else if (left)      idx = (idx + AUTO_OFF_COUNT - 1) % AUTO_OFF_COUNT;
+      if (left || right || enter) { p->auto_off_secs = AUTO_OFF_OPTS[idx]; _dirty = true; return true; }
     }
 #endif
     if (_selected == AUTO_LOCK && p && (left || right || enter)) {
@@ -975,15 +975,15 @@ public:
     }
     if (_selected == LOW_BAT && p) {
       int idx = lowBatIndex();
-      if (right) idx = (idx + 1) % LOW_BAT_COUNT;
-      if (left)  idx = (idx + LOW_BAT_COUNT - 1) % LOW_BAT_COUNT;
-      if (left || right) { p->low_batt_mv = LOW_BAT_OPTS[idx]; _dirty = true; return true; }
+      if (right || enter) idx = (idx + 1) % LOW_BAT_COUNT;
+      else if (left)      idx = (idx + LOW_BAT_COUNT - 1) % LOW_BAT_COUNT;
+      if (left || right || enter) { p->low_batt_mv = LOW_BAT_OPTS[idx]; _dirty = true; return true; }
     }
 #if ENV_INCLUDE_GPS == 1
-    if (_selected == GPS_DUTY_CYCLE && p && (left || right)) {
+    if (_selected == GPS_DUTY_CYCLE && p && (left || right || enter)) {
       int idx = gpsDutyIndex();
-      if (right) idx = (idx + 1) % GPS_DUTY_COUNT;
-      if (left)  idx = (idx + GPS_DUTY_COUNT - 1) % GPS_DUTY_COUNT;
+      if (right || enter) idx = (idx + 1) % GPS_DUTY_COUNT;
+      else if (left)      idx = (idx + GPS_DUTY_COUNT - 1) % GPS_DUTY_COUNT;
       p->gps_interval = GPS_DUTY_OPTS[idx];
       _task->applyGpsInterval();
       _dirty = true;
@@ -1049,9 +1049,9 @@ public:
     }
     if (_selected == BATT_DISPLAY && p) {
       int idx = p->batt_display_mode < BATT_DISPLAY_COUNT ? p->batt_display_mode : 0;
-      if (right) idx = (idx + 1) % BATT_DISPLAY_COUNT;
-      if (left)  idx = (idx + BATT_DISPLAY_COUNT - 1) % BATT_DISPLAY_COUNT;
-      if (left || right) { p->batt_display_mode = idx; _dirty = true; return true; }
+      if (right || enter) idx = (idx + 1) % BATT_DISPLAY_COUNT;
+      else if (left)      idx = (idx + BATT_DISPLAY_COUNT - 1) % BATT_DISPLAY_COUNT;
+      if (left || right || enter) { p->batt_display_mode = idx; _dirty = true; return true; }
     }
 #if FEAT_CLOCK_SECONDS_SETTING
     if (_selected == CLOCK_SECONDS && p && (left || right || enter)) {

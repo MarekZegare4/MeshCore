@@ -301,10 +301,10 @@ public:
       if (c == KEY_UP)   { _pick_sel = (_pick_sel > 0) ? _pick_sel - 1 : _target_n - 1; return true; }
       if (c == KEY_DOWN) { _pick_sel = (_pick_sel < _target_n - 1) ? _pick_sel + 1 : 0; return true; }
       if (c == KEY_ENTER) { applyTarget(_targets[_pick_sel]); _picking = false; return true; }
-      if (c == KEY_CANCEL || c == KEY_CONTEXT_MENU) { _picking = false; return true; }
+      if (c == KEY_CANCEL) { _picking = false; return true; }
       return true;
     }
-    if (c == KEY_CANCEL || c == KEY_CONTEXT_MENU) {
+    if (c == KEY_CANCEL) {
       _task->savePrefsIfDirty(_dirty);   // engine re-seeded per edit
       _task->gotoToolsScreen();
       return true;

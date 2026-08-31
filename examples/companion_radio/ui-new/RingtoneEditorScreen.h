@@ -81,8 +81,8 @@ public:
     _menu.begin("Options", 5);
     _menu.addItem(_menu_play_label);
     _menu.addItem(_menu_slot_label);
-    _menu.addItem(_menu_dur_label);
-    _menu.addItem(_menu_bpm_label);
+    _menu.addValueItem(_menu_dur_label);
+    _menu.addValueItem(_menu_bpm_label);
     _menu.addItem("Insert");
     _menu.addItem("Delete");
     _menu.addItem("Save & Exit");
@@ -163,6 +163,21 @@ public:
     return 200;
   }
 
+  void cycleMenuValue(int sel, int dir) {
+    if (sel == MI_DURATION && _cursor < _len) {
+      uint8_t p  = notePitch(_notes[_cursor]);
+      uint8_t o  = noteOctave(_notes[_cursor]);
+      uint8_t di = noteDurIdx(_notes[_cursor]);
+      di = (dir > 0) ? (di + 1) & 0x03 : (di + 3) & 0x03;
+      _notes[_cursor] = packNote(p, o, di);
+      snprintf(_menu_dur_label, sizeof(_menu_dur_label), "Duration: %s", DUR_LABELS[di]);
+    } else if (sel == MI_BPM) {
+      if (dir > 0) { if (_bpm_idx < 4) _bpm_idx++; }
+      else         { if (_bpm_idx > 0) _bpm_idx--; }
+      snprintf(_menu_bpm_label, sizeof(_menu_bpm_label), "BPM: %u", BPM_OPTS[_bpm_idx]);
+    }
+  }
+
   bool handleInput(char c) override {
     bool up    = (c == KEY_UP);
     bool down  = (c == KEY_DOWN);
@@ -173,24 +188,11 @@ public:
     bool cancel   = (c == KEY_CANCEL);
 
     if (_menu.active) {
-      // LEFT/RIGHT cycle Duration and BPM in-place, menu stays open.
-      if (left || right) {
-        int sel = _menu.selectedIndex();
-        if (sel == MI_DURATION && _cursor < _len) {
-          uint8_t p  = notePitch(_notes[_cursor]);
-          uint8_t o  = noteOctave(_notes[_cursor]);
-          uint8_t di = noteDurIdx(_notes[_cursor]);
-          di = right ? (di + 1) & 0x03 : (di + 3) & 0x03;
-          _notes[_cursor] = packNote(p, o, di);
-          snprintf(_menu_dur_label, sizeof(_menu_dur_label), "Duration: %s", DUR_LABELS[di]);
-        } else if (sel == MI_BPM) {
-          if (right && _bpm_idx < 4) _bpm_idx++;
-          else if (left  && _bpm_idx > 0) _bpm_idx--;
-          snprintf(_menu_bpm_label, sizeof(_menu_bpm_label), "BPM: %u", BPM_OPTS[_bpm_idx]);
-        }
-        return true;
-      }
+      // LEFT/RIGHT -- and Enter, via VALUE_NEXT -- cycle Duration and BPM in
+      // place; the menu stays open and only Back closes it.
+      if (left || right) { cycleMenuValue(_menu.selectedIndex(), right ? 1 : -1); return true; }
       auto res = _menu.handleInput(c);
+      if (res == PopupMenu::VALUE_NEXT) { cycleMenuValue(_menu.selectedIndex(), 1); return true; }
       if (res == PopupMenu::SELECTED) {
         switch ((MenuIdx)_menu.selectedIndex()) {
           case MI_PLAY:
@@ -201,8 +203,8 @@ public:
             _task->stopMelody();
             this->selectSlot(1 - _slot);
             break;
-          case MI_DURATION: break;  // already handled by LEFT/RIGHT
-          case MI_BPM:      break;  // already handled by LEFT/RIGHT
+          case MI_DURATION: break;  // value rows -- see cycleMenuValue()
+          case MI_BPM:      break;
           case MI_INSERT:
             if (_len < MAX_NOTES) {
               int ins = (_cursor < _len) ? _cursor + 1 : _cursor;

@@ -161,6 +161,11 @@ public:
         return true;  // swallow elsewhere
       }
       auto res = _action_menu.handleInput(c);
+      if (res == PopupMenu::VALUE_NEXT) {
+        int idx = _action_menu.selectedIndex();
+        if (idx >= 0 && idx < _act_count) cycleSetting((ActionId)_act_map[idx], 1);
+        return true;
+      }
       if (res == PopupMenu::SELECTED) {
         // GPS-off confirmation popup: rows aren't ActionIds, route by level.
         if (_menu_level == ML_CONFIRM_GPS) {
@@ -177,13 +182,13 @@ public:
         switch (act) {
           case ACT_FILE:      buildFileMenu();     return true;   // descend into submenu
           case ACT_SETTINGS:  buildSettingsMenu(); return true;
-          // Settings rows: Enter advances/toggles the value and keeps focus.
+          // Value rows -- Enter reaches them as VALUE_NEXT above, never here.
           case ACT_MIN_DIST:
           case ACT_UNITS:
           case ACT_GRID:
           case ACT_MARK_AVG:
           case ACT_AUTOSAVE:
-          case ACT_AUTOPAUSE: cycleSetting(act, 1); reopenSettingsAt(sel); return true;
+          case ACT_AUTOPAUSE: return true;
           case ACT_SHARE_NOW:     shareMyLocationNow(); break;
           case ACT_TOGGLE:
             // Starting a trail with GPS switched off logs nothing and just
@@ -346,6 +351,14 @@ private:
     _action_menu.addItem(label);
   }
 
+  // A settings row: its label carries a value, so Enter advances it and leaves
+  // the popup open (PopupMenu reports VALUE_NEXT) instead of picking the row.
+  void pushSetting(ActionId id, const char* label) {
+    if (_act_count >= (int)sizeof(_act_map)) return;
+    _act_map[_act_count++] = (uint8_t)id;
+    _action_menu.addValueItem(label);
+  }
+
   bool fileMenuHasItems() const { return !_store->empty() || savedTrailExists(); }
 
   // Hold-Enter entry point — always opens the short main menu.
@@ -398,12 +411,12 @@ private:
     _menu_level = ML_SETTINGS;
     _act_count  = 0;
     _action_menu.begin("Settings", 4);
-    pushAction(ACT_MIN_DIST,  _act_min_dist_label);
-    pushAction(ACT_AUTOPAUSE, _act_autopause_label);
-    pushAction(ACT_MARK_AVG,  _act_mark_avg_label);
-    pushAction(ACT_AUTOSAVE,  _act_autosave_label);
-    if (_view == V_SUMMARY) pushAction(ACT_UNITS, _act_units_label);
-    if (_view == V_MAP)     pushAction(ACT_GRID,  _act_grid_label);
+    pushSetting(ACT_MIN_DIST,  _act_min_dist_label);
+    pushSetting(ACT_AUTOPAUSE, _act_autopause_label);
+    pushSetting(ACT_MARK_AVG,  _act_mark_avg_label);
+    pushSetting(ACT_AUTOSAVE,  _act_autosave_label);
+    if (_view == V_SUMMARY) pushSetting(ACT_UNITS, _act_units_label);
+    if (_view == V_MAP)     pushSetting(ACT_GRID,  _act_grid_label);
   }
 
   // Cycle a settings value. Returns true if `act` was a settings row.
@@ -431,14 +444,6 @@ private:
   // navigation / add / mark / rename / delete / send moved to WaypointsView.)
   bool ownPos(int32_t& lat, int32_t& lon) const { return _task->currentLocation(lat, lon); }
   bool useImperial() const { return _task && _task->useImperial(); }
-
-  // After Enter on a settings row, the popup auto-closes per PopupMenu's
-  // semantics. Re-open the Settings submenu with focus restored to that row so
-  // the user can continue cycling.
-  void reopenSettingsAt(int sel) {
-    buildSettingsMenu();
-    _action_menu.setSelected(sel);
-  }
 
   void cycleMinDelta(NodePrefs* p, int dir) {
     uint8_t idx = p->trail_min_delta_idx;
