@@ -374,7 +374,8 @@ class MessagesScreen : public UIScreen {
     uint8_t hash_size = (path_len_packed >> 6) + 1;
     uint8_t hop_count = path_len_packed & 63;
     if (hop_count == 0) return;
-    if (hop_count > MAX_HIST_PATH_BYTES) hop_count = MAX_HIST_PATH_BYTES;   // matches _path_detail_names capacity
+    uint8_t max_hops = MAX_HIST_PATH_BYTES / hash_size;   // matches capturePath()/markChannelRelayed()'s write-side bound
+    if (hop_count > max_hops) hop_count = max_hops;
     for (uint8_t i = 0; i < hop_count; i++) {
       resolveHopName(&path[i * hash_size], hash_size, _path_detail_names[i], sizeof(_path_detail_names[i]));
     }
