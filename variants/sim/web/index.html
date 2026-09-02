@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<!--
+  Phase 2 minimal proof harness -- NOT the final website embed (that's a
+  later, separate design pass). Just enough of a page to manually verify:
+
+    1. the real boot splash + menu render on the canvas below (same content
+       Phase 1 proved renders as ASCII art in a terminal)
+    2. clicking the on-page buttons (or using arrow/enter/esc/n/p keys)
+       navigates the real menu
+    3. after changing something persistent (e.g. Settings > Name, or just
+       letting an identity get created on first boot) a REAL browser page
+       reload (F5 / Cmd-R -- not just re-running node) shows the same state
+       was preserved via IDBFS
+
+  Serve this directory with any static file server (must be http://, not
+  file:// -- the wasm/IndexedDB/module-script machinery needs a real
+  origin), e.g. from this directory:
+
+      python3 -m http.server 8080
+
+  then open http://localhost:8080/ .
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MeshCore companion_radio sim (Phase 2 -- wasm)</title>
+<style>
+  body {
+    background: #1b1b1b;
+    color: #ddd;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 24px;
+  }
+  h1 { font-size: 16px; font-weight: 600; margin: 0; }
+  #sim-canvas {
+    background: #000;
+    border: 2px solid #444;
+    image-rendering: pixelated;   /* keep the 128x64 backing store crisp when CSS-upscaled */
+    width: 512px;
+    height: 256px;
+  }
+  #status { font-size: 12px; color: #999; min-height: 1.2em; }
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 56px);
+    grid-template-rows: repeat(3, 44px);
+    gap: 6px;
+  }
+  .dpad button, .row button {
+    background: #2a2a2a;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .dpad button:active, .row button:active { background: #444; }
+  .dpad .up    { grid-column: 2; grid-row: 1; }
+  .dpad .left  { grid-column: 1; grid-row: 2; }
+  .dpad .sel   { grid-column: 2; grid-row: 2; font-weight: 700; }
+  .dpad .right { grid-column: 3; grid-row: 2; }
+  .dpad .down  { grid-column: 2; grid-row: 3; }
+  .row { display: flex; gap: 8px; }
+  .row button { padding: 8px 14px; }
+  #log {
+    width: 512px;
+    height: 90px;
+    overflow-y: auto;
+    background: #111;
+    border: 1px solid #333;
+    font: 11px/1.4 ui-monospace, monospace;
+    color: #7a7;
+    padding: 6px 8px;
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+  <h1>MeshCore companion_radio -- real firmware, in the browser (Phase 2 proof harness)</h1>
+  <canvas id="sim-canvas" width="128" height="64"></canvas>
+  <div id="status">loading...</div>
+
+  <div class="dpad">
+    <button class="up"    data-key="0xB5">&uarr;</button>
+    <button class="left"  data-key="0xB4">&larr;</button>
+    <button class="sel"   data-key="13">OK</button>
+    <button class="right" data-key="0xB7">&rarr;</button>
+    <button class="down"  data-key="0xB6">&darr;</button>
+  </div>
+  <div class="row">
+    <button data-key="27">Esc / Cancel</button>
+    <button data-key="0xF2">Prev (p)</button>
+    <button data-key="0xF1">Next (n)</button>
+  </div>
+
+  <div id="log"></div>
+
+  <script src="build/meshcore_sim.js"></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    function log(msg) {
+      const line = document.createElement('div');
+      line.textContent = msg;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // console.log/.error from inside the wasm module (the sim_fs_mount_idbfs
+    // EM_ASM block, IDBFS internals, etc.) are useful to see in-page too,
+    // not just devtools -- forward them into #log without disturbing the
+    // real console.
+    for (const level of ['log', 'error', 'warn']) {
+      const orig = console[level].bind(console);
+      console[level] = (...args) => { orig(...args); log('[js] ' + args.join(' ')); };
+    }
+
+    if (typeof MeshCoreSim !== 'function') {
+      statusEl.textContent = 'error: build/meshcore_sim.js missing or failed to load -- run variants/sim/build_wasm.sh first.';
+    } else {
+      statusEl.textContent = 'booting wasm module...';
+      MeshCoreSim().then((Module) => {
+        window.Module = Module;   // exposed for console poking while testing
+        statusEl.textContent = 'running -- IDBFS-backed identity/prefs persist across a real reload.';
+        log('module ready; sim_enqueue_key = ' + (typeof Module._sim_enqueue_key));
+
+        function sendKey(code) {
+          if (Module && Module._sim_enqueue_key) Module._sim_enqueue_key(code);
+        }
+
+        document.querySelectorAll('button[data-key]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const code = Number(btn.dataset.key);
+            sendKey(code);
+          });
+        });
+
+        // Keyboard passthrough: arrows/Enter/Escape/n/p/WASD, same mapping
+        // UITask.cpp's native SIM_PLATFORM stdin branch already uses.
+        const KEYMAP = {
+          ArrowUp: 0xB5, ArrowDown: 0xB6, ArrowLeft: 0xB4, ArrowRight: 0xB7,
+          Enter: 13, ' ': 13,
+          Escape: 27, Backspace: 27,
+          w: 0xB5, s: 0xB6, a: 0xB4, d: 0xB7,
+          n: 0xF1, p: 0xF2,
+        };
+        window.addEventListener('keydown', (e) => {
+          if (e.key in KEYMAP) { sendKey(KEYMAP[e.key]); e.preventDefault(); }
+        });
+      }).catch((err) => {
+        statusEl.textContent = 'failed to start: ' + err;
+        console.error(err);
+      });
+    }
+  </script>
+</body>
+</html>

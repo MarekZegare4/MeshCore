@@ -20,6 +20,9 @@ platformio.local.ini
 CODE_REVIEW.md
 tools/pngs/
 tools/gpx/
+sim_data/
+variants/sim/tools/emsdk/
+variants/sim/web/build/
 
 # graphify
 graphify-out/

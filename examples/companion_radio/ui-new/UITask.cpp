@@ -9,6 +9,22 @@
 #ifdef WIFI_SSID
   #include <WiFi.h>
 #endif
+#ifdef SIM_PLATFORM
+  #include <sys/select.h>
+  #include <unistd.h>
+  #ifdef __EMSCRIPTEN__
+    #include <emscripten.h>
+    // The single UITask instance is a file-scope global in
+    // examples/companion_radio/main.cpp (`UITask ui_task(...)`, only under
+    // `#ifdef DISPLAY_CLASS`, which the sim build always defines) -- not
+    // reachable from here by name, so UITask::begin() stashes `this` here
+    // (see below) the same way every other single-instance sim glue point
+    // does. Declared up here (rather than next to its use near enqueueKey(),
+    // further down this file) since UITask::begin() -- also further down,
+    // but earlier in the file -- needs it too.
+    static UITask* g_sim_ui_task_for_js = nullptr;
+  #endif
+#endif
 
 #ifndef AUTO_OFF_MILLIS
   #define AUTO_OFF_MILLIS     15000   // 15 seconds
@@ -1361,6 +1377,10 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   uint32_t aoff = autoOffMillis();
   _auto_off = millis() + (aoff > 0 ? aoff : AUTO_OFF_MILLIS);
 
+#if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+  g_sim_ui_task_for_js = this;   // see sim_enqueue_key() below
+#endif
+
 #if defined(CARDKB_I2C)
   // On the ENV_PIN_SDA/SCL path, CARDKB_I2C is Wire1, already brought up by
   // sensors.begin() (EnvironmentSensorManager), which runs before this. On
@@ -2099,6 +2119,23 @@ void UITask::enqueueKey(char c) {
   _kq_head = next;
 }
 
+#if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+void UITask::injectSimKey(char c) {
+  enqueueKey(checkDisplayOn(c));
+}
+
+// Called directly from a host HTML page's JS (button onclick / keydown
+// listener) -- e.g. `Module._sim_enqueue_key(keyCode)` -- to drive the real
+// on-device menu. `c` is one of the KEY_* codes in src/helpers/ui/
+// UIScreen.h (KEY_UP/DOWN/LEFT/RIGHT/ENTER/CANCEL/NEXT/PREV/SELECT), the
+// exact same values the native build's stdin-poll branch above already
+// enqueues -- so the host page owns key-mapping (arrow keys, on-screen
+// D-pad buttons, whatever), not this function.
+extern "C" EMSCRIPTEN_KEEPALIVE void sim_enqueue_key(char c) {
+  if (g_sim_ui_task_for_js) g_sim_ui_task_for_js->injectSimKey(c);
+}
+#endif
+
 bool UITask::dequeueKey(char& c) {
   if (_kq_tail == _kq_head) return false;
   c = _key_queue[_kq_tail];
@@ -2364,6 +2401,66 @@ void UITask::loop() {
   } else if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
     if (!_locked) enqueueKey(handleTripleClick(KEY_SELECT));
   }
+#elif defined(SIM_PLATFORM)
+  // Native terminal input: stdin is put into raw/non-canonical mode by
+  // variants/sim/sim_main.cpp's main(), so keys arrive here one at a time
+  // with no Enter-to-submit line buffering. Non-blocking select() on fd 0
+  // (VMIN=0/VTIME=0 on the fd itself would also work, but select() keeps
+  // the intent -- "is there a key waiting?" -- explicit) takes the place of
+  // every concrete MomentaryButton/GPIO poll above. Every real board maps
+  // its own physical buttons down to the same enqueueKey() choke point;
+  // this is the sim's one input source instead.
+  //   Arrow keys   -> KEY_UP/DOWN/LEFT/RIGHT
+  //   Enter/Space  -> KEY_ENTER
+  //   Esc/Backspace-> KEY_CANCEL
+  //   w/a/s/d      -> up/left/down/right (arrow keys need a real terminal;
+  //                   WASD works even through a dumb pipe/redirected stdin)
+  //   n / p        -> KEY_NEXT / KEY_PREV
+  {
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(0, &fds);
+    struct timeval tv = {0, 0};
+    if (select(1, &fds, NULL, NULL, &tv) > 0) {
+      uint8_t buf[16];
+      int n = (int)read(0, buf, sizeof(buf));
+      int i = 0;
+      while (i < n) {
+        uint8_t c = buf[i++];
+        char key = 0;
+        if (c == 0x1b && i + 1 < n && buf[i] == '[') {
+          uint8_t code = buf[i + 1];
+          i += 2;
+          switch (code) {
+            case 'A': key = KEY_UP;    break;
+            case 'B': key = KEY_DOWN;  break;
+            case 'C': key = KEY_RIGHT; break;
+            case 'D': key = KEY_LEFT;  break;
+            default:  key = 0;         break;
+          }
+        } else if (c == 0x1b) {
+          key = KEY_CANCEL;
+        } else if (c == '\r' || c == '\n' || c == ' ') {
+          key = KEY_ENTER;
+        } else if (c == 127 || c == 8) {
+          key = KEY_CANCEL;
+        } else if (c == 'w' || c == 'W') {
+          key = KEY_UP;
+        } else if (c == 's' || c == 'S') {
+          key = KEY_DOWN;
+        } else if (c == 'a' || c == 'A') {
+          key = KEY_LEFT;
+        } else if (c == 'd' || c == 'D') {
+          key = KEY_RIGHT;
+        } else if (c == 'n') {
+          key = KEY_NEXT;
+        } else if (c == 'p') {
+          key = KEY_PREV;
+        }
+        if (key) enqueueKey(checkDisplayOn(key));
+      }
+    }
+  }
 #endif
 #if defined(PIN_USER_BTN_ANA)
   if (millis() - _analogue_pin_read_millis > 10) {
@@ -2616,7 +2713,11 @@ void UITask::loop() {
         _display->drawTextCentered(_display->width() / 2, mid - step, "Low Battery");
         _display->drawTextCentered(_display->width() / 2, mid, "Shutting down");
         _display->endFrame();
+#ifdef SIM_PLATFORM
+        // Skip the pre-shutdown UX pause in the sim.
+#else
         if (_display->isEink() == false) { delay(2000); }
+#endif
       }
       shutdown();
     }

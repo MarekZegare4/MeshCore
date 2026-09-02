@@ -208,6 +208,20 @@ class UITask : public AbstractUITask {
   void enqueueKey(char c);
   bool dequeueKey(char& c);
 
+#if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+public:
+  // JS-callable input entry point for the Phase 2 (Emscripten) sim build --
+  // see the sim_enqueue_key() EMSCRIPTEN_KEEPALIVE wrapper defined at the
+  // bottom of UITask.cpp, which is what a host HTML page's buttons/keyboard
+  // listener actually calls. Routes through checkDisplayOn() (wake-on-any-key,
+  // same as every other input source below) then the same enqueueKey()
+  // choke point every real board's button poll already uses -- this is the
+  // sim's substitute for a real board's GPIO/joystick poll, not a new input
+  // path of its own.
+  void injectSimKey(char c);
+private:
+#endif
+
   // Optional M5Stack CardKB (I2C keyboard, addr 0x5F). See the CARDKB_I2C
   // definition near the top of this file for which bus it's on and why.
 #if defined(CARDKB_I2C)

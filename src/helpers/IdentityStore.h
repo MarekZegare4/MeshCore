@@ -8,6 +8,11 @@
   #define FILESYSTEM  Adafruit_LittleFS
 
   using namespace Adafruit_LittleFS_Namespace;
+#elif defined(SIM_PLATFORM)
+  #include <SimFS.h>
+  #define FILESYSTEM  SimFS
+  // SimFS.h already typedefs File itself (matches the ESP32/NRF52 pattern of
+  // a bare, unqualified `File` symbol coming from the platform's own core).
 #endif
 #include <Identity.h>
 

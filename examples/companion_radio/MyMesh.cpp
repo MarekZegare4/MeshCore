@@ -2845,7 +2845,12 @@ void MyMesh::handleCmdFrame(size_t len) {
     bool success = _store->formatFileSystem();
     if (success) {
       writeOKFrame();
+#ifdef SIM_PLATFORM
+      // Skip the pre-reboot UX pause -- board.reboot() just exits the
+      // process in the sim (see SimMainBoard::reboot()).
+#else
       delay(1000);
+#endif
       board.reboot();  // doesn't return
     } else {
       writeErrFrame(ERR_CODE_FILE_IO_ERROR);

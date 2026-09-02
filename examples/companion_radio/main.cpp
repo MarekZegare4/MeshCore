@@ -33,6 +33,13 @@ static uint32_t _atoi(const char* sp) {
 #elif defined(ESP32)
   #include <SPIFFS.h>
   DataStore store(SPIFFS, rtc_clock);
+#elif defined(SIM_PLATFORM)
+  #include <SimFS.h>
+  // Real files under ./sim_data/ (relative to the process's cwd) so
+  // NodePrefs/contacts/identity genuinely round-trip across process
+  // restarts -- see SimFS.h.
+  SimFS sim_fs("./sim_data");
+  DataStore store(sim_fs, rtc_clock);
 #endif
 
 #ifdef ESP32
@@ -88,6 +95,11 @@ static uint32_t _atoi(const char* sp) {
 #elif defined(STM32_PLATFORM)
   #include <helpers/ArduinoSerialInterface.h>
   ArduinoSerialInterface serial_interface;
+#elif defined(SIM_PLATFORM)
+  // No real BLE/USB companion-app transport in Phase 1 -- always reports
+  // "not connected". See variants/sim/SimSerialInterface.h.
+  #include <SimSerialInterface.h>
+  SimSerialInterface serial_interface;
 #else
   #error "need to define a serial interface"
 #endif
@@ -238,6 +250,18 @@ void setup() {
 #else
   serial_interface.begin(Serial);
 #endif
+  the_mesh.startInterface(serial_interface);
+#elif defined(SIM_PLATFORM)
+  // sim_fs already exists/mkdir'd itself in its constructor above.
+  store.begin();
+  the_mesh.begin(
+    #ifdef DISPLAY_CLASS
+        disp != NULL
+    #else
+        false
+    #endif
+  );
+  serial_interface.begin();
   the_mesh.startInterface(serial_interface);
 #else
   #error "need to define filesystem"
