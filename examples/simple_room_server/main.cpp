@@ -21,6 +21,18 @@ void halt() {
   while (1) ;
 }
 
+#if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+// Same "has setup() actually finished" readiness flag as
+// examples/companion_radio/main.cpp / examples/simple_repeater/main.cpp --
+// see those files' comments for why this is needed instead of a fixed
+// post-ready delay.
+static bool g_sim_ready = false;
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_is_ready() {
+  return g_sim_ready ? 1 : 0;
+}
+#endif
+
 static char command[MAX_POST_TEXT_LEN+1];
 #ifdef ETHERNET_ENABLED
 static char ethernet_command[MAX_POST_TEXT_LEN+1];
@@ -28,7 +40,12 @@ static char ethernet_command[MAX_POST_TEXT_LEN+1];
 
 void setup() {
   Serial.begin(115200);
+#ifndef SIM_PLATFORM
+  // Skip this one-shot boot pause in the sim: under Emscripten it would
+  // synchronously block the browser's single JS thread for a full second
+  // (see examples/simple_repeater/main.cpp's setup() for the same guard).
   delay(1000);
+#endif
 
   board.begin();
 
@@ -63,6 +80,15 @@ void setup() {
   SPIFFS.begin(true);
   fs = &SPIFFS;
   IdentityStore store(SPIFFS, "/identity");
+#elif defined(SIM_PLATFORM)
+  // Own root, distinct from both examples/companion_radio/main.cpp's
+  // "./sim_data" and examples/simple_repeater/main.cpp's
+  // "./sim_data_repeater" -- so a room-server instance's identity can never
+  // collide with either, even sharing a cwd (native) or a page (wasm).
+  static SimFS sim_fs("./sim_data_room");
+  fs = &sim_fs;
+  IdentityStore store(sim_fs, "/identity");
+  store.begin();
 #else
   #error "need to define filesystem"
 #endif
@@ -101,6 +127,9 @@ void setup() {
 #endif
 
   board.onBootComplete();
+#if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+  g_sim_ready = true;
+#endif
 }
 
 void loop() {
