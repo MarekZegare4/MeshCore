@@ -123,7 +123,7 @@ void SimDisplayDriverCanvas::print(const char* str) {
   gfx.resetDirty();
   gfx.setCursor(_cursor_x, _cursor_y);
   // color arg is just our own internal "lit" marker (1) -- the real on-screen
-  // amber/black choice is applied once at blit time below, from _color, same
+  // white/black choice is applied once at blit time below, from _color, same
   // as every other primitive in this class. sz is the real current text
   // size (set via setTextSize(), e.g. the Clock screen's big digits) --
   // miscFixedPrint()/miscFixedDrawGlyph() scale both the glyph pixels and
@@ -141,7 +141,7 @@ void SimDisplayDriverCanvas::print(const char* str) {
       if (!Module.__simCtx) return;
       var ctx = Module.__simCtx;
       var buf = $0;
-      ctx.fillStyle = UTF8ToString($5) === 'L' ? '#ffb000' : '#000';
+      ctx.fillStyle = UTF8ToString($5) === 'L' ? '#fff' : '#000';
       for (var y = $2; y <= $4; y++) {
         for (var x = $1; x <= $3; x++) {
           if (HEAPU8[buf + y * 128 + x]) ctx.fillRect(x, y, 1, 1);

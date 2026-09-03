@@ -258,11 +258,12 @@ public:
   // real board it's mirroring.
   bool isSingleFont() const override { return true; }
 
-  // Amber-on-black palette (a common OLED look) for LIGHT/DARK; the other
-  // Color enumerators (RED/GREEN/BLUE/YELLOW/ORANGE) aren't used on the real
-  // monochrome OLED boards this sim mirrors either (DisplayDriver.h's own
-  // comment: "on b/w screen, colors will be !=0 synonym of light").
-  static const char* jsColor(Color c) { return c == DARK ? "#000" : "#ffb000"; }
+  // White-on-black palette (matches a real monochrome SSD1306/SH1106 OLED)
+  // for LIGHT/DARK; the other Color enumerators (RED/GREEN/BLUE/YELLOW/
+  // ORANGE) aren't used on the real monochrome OLED boards this sim mirrors
+  // either (DisplayDriver.h's own comment: "on b/w screen, colors will be
+  // !=0 synonym of light").
+  static const char* jsColor(Color c) { return c == DARK ? "#000" : "#fff"; }
 
   // Real bitmap-font rendering (byte-identical glyphs to a real MeshCore-Solo
   // board with OLED_MISC_FIXED_FONT=1 -- see solo/heltec_v3/platformio.ini),
@@ -295,7 +296,7 @@ public:
   void fillRect(int x, int y, int w, int h) override {
     EM_ASM({
       if (!Module.__simCtx) return;
-      Module.__simCtx.fillStyle = UTF8ToString($4) === 'L' ? '#ffb000' : '#000';
+      Module.__simCtx.fillStyle = UTF8ToString($4) === 'L' ? '#fff' : '#000';
       Module.__simCtx.fillRect($0, $1, $2, $3);
     }, x, y, w, h, (_color != DARK) ? "L" : "D");
   }
@@ -304,7 +305,7 @@ public:
     EM_ASM({
       if (!Module.__simCtx) return;
       var ctx = Module.__simCtx;
-      ctx.strokeStyle = UTF8ToString($4) === 'L' ? '#ffb000' : '#000';
+      ctx.strokeStyle = UTF8ToString($4) === 'L' ? '#fff' : '#000';
       ctx.lineWidth = 1;
       ctx.strokeRect($0 + 0.5, $1 + 0.5, $2 - 1, $3 - 1);
     }, x, y, w, h, (_color != DARK) ? "L" : "D");
@@ -329,7 +330,7 @@ public:
       var bits = $4;
       var lit = UTF8ToString($5) === 'L';
       var widthInBytes = (w + 7) >> 3;
-      ctx.fillStyle = lit ? '#ffb000' : '#000';
+      ctx.fillStyle = lit ? '#fff' : '#000';
       for (var ry = 0; ry < h; ry++) {
         for (var rx = 0; rx < w; rx++) {
           var byteOff = bits + ry * widthInBytes + (rx >> 3);
