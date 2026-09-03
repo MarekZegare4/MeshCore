@@ -252,6 +252,14 @@
     function sendKey(inst, code) {
       inst.mod.ccall('sim_enqueue_key', null, ['number'], [code]);
     }
+    function sendKeyLongPress(inst, code) {
+      inst.mod.ccall('sim_enqueue_key_longpress', null, ['number'], [code]);
+    }
+    // Same 1000ms MomentaryButton hold threshold as the single-instance
+    // harness (web/index.html) -- see that file's comment for why holding
+    // OK/Enter matters (real context-menu access via
+    // UITask::handleLongPress()).
+    const LONG_PRESS_MS = 1000;
 
     async function main() {
       log('booting instance A (companion_radio)...');
@@ -298,10 +306,21 @@
       setInterval(() => pollRelay(R), 100);
 
       document.querySelectorAll('button[data-instance]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const inst = btn.dataset.instance === 'A' ? A : B;
-          sendKey(inst, Number(btn.dataset.key));
+        const inst = btn.dataset.instance === 'A' ? A : B;
+        const code = Number(btn.dataset.key);
+        let timer = null, longFired = false;
+        btn.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          longFired = false;
+          timer = setTimeout(() => { longFired = true; sendKeyLongPress(inst, code); }, LONG_PRESS_MS);
         });
+        btn.addEventListener('pointerup', () => {
+          if (timer) { clearTimeout(timer); timer = null; }
+          if (!longFired) sendKey(inst, code);
+        });
+        const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+        btn.addEventListener('pointerleave', cancel);
+        btn.addEventListener('pointercancel', cancel);
       });
 
       document.getElementById('btn-advert-a').addEventListener('click', () => {

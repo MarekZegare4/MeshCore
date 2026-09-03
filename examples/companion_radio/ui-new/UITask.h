@@ -219,6 +219,14 @@ public:
   // sim's substitute for a real board's GPIO/joystick poll, not a new input
   // path of its own.
   void injectSimKey(char c);
+  // Same idea, but for a held-down press: routes through handleLongPress()
+  // instead of checkDisplayOn() directly -- the real long-press mechanism
+  // (KEY_ENTER -> KEY_CONTEXT_MENU, plus the first-8-seconds CLI-rescue
+  // gate) every real board's MomentaryButton(pin, 1000, ...) already
+  // reaches via BUTTON_EVENT_LONG_PRESS. Without this, a sim instance could
+  // never open the context menu at all -- injectSimKey() alone has no way
+  // to signal "this press was held".
+  void injectSimKeyLongPress(char c);
 private:
 #endif
 

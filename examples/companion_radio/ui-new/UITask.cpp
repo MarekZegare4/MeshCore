@@ -2124,6 +2124,10 @@ void UITask::injectSimKey(char c) {
   enqueueKey(checkDisplayOn(c));
 }
 
+void UITask::injectSimKeyLongPress(char c) {
+  enqueueKey(handleLongPress(c));
+}
+
 // Called directly from a host HTML page's JS (button onclick / keydown
 // listener) -- e.g. `Module._sim_enqueue_key(keyCode)` -- to drive the real
 // on-device menu. `c` is one of the KEY_* codes in src/helpers/ui/
@@ -2133,6 +2137,18 @@ void UITask::injectSimKey(char c) {
 // D-pad buttons, whatever), not this function.
 extern "C" EMSCRIPTEN_KEEPALIVE void sim_enqueue_key(char c) {
   if (g_sim_ui_task_for_js) g_sim_ui_task_for_js->injectSimKey(c);
+}
+
+// Long-press counterpart -- the host page's own press-and-hold timer (see
+// web/index.html/mesh.html) calls this instead of sim_enqueue_key() once a
+// button/key has been held past the same ~1000ms threshold every real
+// board's MomentaryButton uses. Real hardware never gets both a short-press
+// AND a long-press event for the same physical press (MomentaryButton fires
+// one or the other), so the host page's timer must do the same: fire this
+// on hold-past-threshold and suppress the plain click that would otherwise
+// follow on release.
+extern "C" EMSCRIPTEN_KEEPALIVE void sim_enqueue_key_longpress(char c) {
+  if (g_sim_ui_task_for_js) g_sim_ui_task_for_js->injectSimKeyLongPress(c);
 }
 #endif
 

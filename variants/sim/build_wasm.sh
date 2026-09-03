@@ -100,6 +100,7 @@ SRCS=(
   variants/sim/thirdparty/crypto/SHA512.cpp
   variants/sim/thirdparty/cayennelpp/CayenneLPP.cpp
   variants/sim/thirdparty/cayennelpp/CayenneLPPPolyline.cpp
+  variants/sim/thirdparty/gfx/Adafruit_GFX.cpp
   examples/companion_radio/main.cpp
   examples/companion_radio/MyMesh.cpp
   examples/companion_radio/DataStore.cpp
@@ -112,6 +113,7 @@ INCLUDES=(
   -Ivariants/sim/thirdparty/crypto
   -Ivariants/sim/thirdparty/cayennelpp
   -Ivariants/sim/thirdparty/arduinojson
+  -Ivariants/sim/thirdparty/gfx
   -Ilib/ed25519
   -Isrc
   -Iexamples/companion_radio
@@ -158,7 +160,21 @@ OBJS=()
 for src in "${SRCS[@]}"; do
   obj="$OBJ_DIR/${src%.*}.o"
   mkdir -p "$(dirname "$obj")"
-  "$EMXX" -c "${COMMON_FLAGS[@]}" "$src" -o "$obj"
+  extra_flags=()
+  if [ "$src" = "variants/sim/thirdparty/gfx/Adafruit_GFX.cpp" ]; then
+    # Adafruit_GFX.h/.cpp branch on `#if ARDUINO >= 100` in exactly two spots
+    # (which Arduino.h to #include, and whether write(uint8_t) returns
+    # size_t or void) -- ARDUINO is deliberately never defined globally for
+    # this build (CayenneLPP.cpp/ArduinoJson branch on #ifdef ARDUINO to
+    # pick their portable std:: path instead of Arduino String/Stream), so
+    # this is scoped to just this one file's own compile, matching the same
+    # `#define ARDUINO 100` target.cpp does locally before its own
+    # #include <Adafruit_GFX.h> (see that file's comment) -- both need it so
+    # Adafruit_GFX's declaration (parsed by target.cpp) and its out-of-line
+    # definition (parsed here) agree on the same write(uint8_t) signature.
+    extra_flags=(-DARDUINO=100)
+  fi
+  "$EMXX" -c "${COMMON_FLAGS[@]}" ${extra_flags[@]+"${extra_flags[@]}"} "$src" -o "$obj"
   OBJS+=("$obj")
 done
 

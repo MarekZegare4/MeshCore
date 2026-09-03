@@ -128,19 +128,47 @@
         statusEl.textContent = 'running -- IDBFS-backed identity/prefs persist across a real reload.';
         log('module ready; sim_enqueue_key = ' + (typeof Module._sim_enqueue_key));
 
+        // A real MomentaryButton(pin, 1000, ...) fires either a short click OR
+        // a long-press event for one physical press, never both -- e.g.
+        // holding OK/Enter opens the real context menu (see
+        // UITask::handleLongPress() mapping KEY_ENTER -> KEY_CONTEXT_MENU)
+        // instead of the normal short-press action. LONG_PRESS_MS mirrors
+        // that same 1000ms threshold every real board's MomentaryButton uses.
+        const LONG_PRESS_MS = 1000;
+
         function sendKey(code) {
           if (Module && Module._sim_enqueue_key) Module._sim_enqueue_key(code);
         }
+        function sendKeyLongPress(code) {
+          if (Module && Module._sim_enqueue_key_longpress) Module._sim_enqueue_key_longpress(code);
+        }
 
+        // Press-and-hold for the on-page buttons: start a timer on press-down,
+        // fire the long-press call if still held past the threshold, and
+        // suppress the short click on release if it already fired.
         document.querySelectorAll('button[data-key]').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            const code = Number(btn.dataset.key);
-            sendKey(code);
+          const code = Number(btn.dataset.key);
+          let timer = null, longFired = false;
+          btn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            longFired = false;
+            timer = setTimeout(() => { longFired = true; sendKeyLongPress(code); }, LONG_PRESS_MS);
           });
+          btn.addEventListener('pointerup', () => {
+            if (timer) { clearTimeout(timer); timer = null; }
+            if (!longFired) sendKey(code);
+          });
+          const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+          btn.addEventListener('pointerleave', cancel);
+          btn.addEventListener('pointercancel', cancel);
         });
 
         // Keyboard passthrough: arrows/Enter/Escape/n/p/WASD, same mapping
-        // UITask.cpp's native SIM_PLATFORM stdin branch already uses.
+        // UITask.cpp's native SIM_PLATFORM stdin branch already uses. Same
+        // press-and-hold logic as the buttons above, keyed by e.key so
+        // multiple keys can be held independently; the `keyHold.has()` guard
+        // ignores the browser's own keydown auto-repeat (which would
+        // otherwise restart the long-press timer on every repeat tick).
         const KEYMAP = {
           ArrowUp: 0xB5, ArrowDown: 0xB6, ArrowLeft: 0xB4, ArrowRight: 0xB7,
           Enter: 13, ' ': 13,
@@ -148,8 +176,22 @@
           w: 0xB5, s: 0xB6, a: 0xB4, d: 0xB7,
           n: 0xF1, p: 0xF2,
         };
+        const keyHold = new Map();
         window.addEventListener('keydown', (e) => {
-          if (e.key in KEYMAP) { sendKey(KEYMAP[e.key]); e.preventDefault(); }
+          if (!(e.key in KEYMAP)) return;
+          e.preventDefault();
+          if (keyHold.has(e.key)) return;   // auto-repeat, not a new press
+          const code = KEYMAP[e.key];
+          const state = { longFired: false };
+          state.timer = setTimeout(() => { state.longFired = true; sendKeyLongPress(code); }, LONG_PRESS_MS);
+          keyHold.set(e.key, state);
+        });
+        window.addEventListener('keyup', (e) => {
+          const state = keyHold.get(e.key);
+          if (!state) return;
+          clearTimeout(state.timer);
+          if (!state.longFired) sendKey(KEYMAP[e.key]);
+          keyHold.delete(e.key);
         });
       }).catch((err) => {
         statusEl.textContent = 'failed to start: ' + err;

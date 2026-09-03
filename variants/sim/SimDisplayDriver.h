@@ -244,32 +244,13 @@ public:
   // comment: "on b/w screen, colors will be !=0 synonym of light").
   static const char* jsColor(Color c) { return c == DARK ? "#000" : "#ffb000"; }
 
-  void print(const char* str) override {
-    if (!str) return;
-    EM_ASM({
-      if (!Module.__simCtx) return;
-      var ctx = Module.__simCtx;
-      ctx.fillStyle = UTF8ToString($3) === 'L' ? '#ffb000' : '#000';
-      ctx.font = '8px monospace';
-      ctx.textBaseline = 'top';
-      // Advance width is fixed (getCharWidth()==6, DisplayDriver.h default) --
-      // draw one character per cell so glyph spacing matches the layout math
-      // every screen already does off getTextWidth()'s strlen()*6 estimate,
-      // instead of leaving it to the font's own (proportional) metrics.
-      // NB: EM_ASM's argument-splitting only understands parens, not
-      // braces -- an unparenthesized top-level comma (e.g. a multi-name
-      // `var a, b;`) gets misread as separating this macro's own C++
-      // arguments and breaks the whole block. Every declaration below is
-      // therefore its own separate `var` statement.
-      var s = UTF8ToString($0);
-      var x = $1;
-      var y = $2;
-      for (var i = 0; i < s.length; i++) {
-        ctx.fillText(s[i], x + i * 6, y);
-      }
-    }, str, _cursor_x, _cursor_y, (_color != DARK) ? "L" : "D");
-    _cursor_x += getTextWidth(str);
-  }
+  // Real bitmap-font rendering (byte-identical glyphs to a real MeshCore-Solo
+  // board with OLED_MISC_FIXED_FONT=1 -- see solo/heltec_v3/platformio.ini),
+  // not the browser's own system font -- defined out-of-line in target.cpp,
+  // the one Emscripten-only translation unit allowed to pull in
+  // MiscFixedRenderer.h (its own header comment: including it from more than
+  // one .cpp would duplicate the font's static const tables in each).
+  void print(const char* str) override;
 
   void fillRect(int x, int y, int w, int h) override {
     EM_ASM({

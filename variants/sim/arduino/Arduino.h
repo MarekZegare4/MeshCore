@@ -75,6 +75,20 @@ inline long random(long howsmall, long howbig) {
 #ifndef PROGMEM
 #define PROGMEM
 #endif
+// Real pgm_read_*() on a native host is just a plain dereference -- there's
+// no separate flash address space to special-case. Needed once Adafruit_GFX
+// + MiscFixedFont.h (variants/sim/thirdparty/gfx/, src/helpers/ui/) entered
+// the sim build; nothing before that read PROGMEM data at all (see this
+// file's own header comment).
+#ifndef pgm_read_byte
+#define pgm_read_byte(addr) (*(const uint8_t*)(addr))
+#endif
+#ifndef pgm_read_word
+#define pgm_read_word(addr) (*(const uint16_t*)(addr))
+#endif
+#ifndef pgm_read_dword
+#define pgm_read_dword(addr) (*(const uint32_t*)(addr))
+#endif
 #ifndef F
 #define F(x) (x)
 #endif
@@ -141,6 +155,29 @@ inline void yield() { }
 // (e.g. examples/companion_radio/ui-new/TrailScreen.h's BoundedSerialPrint)
 // declares cleanly, exactly like on a real board.
 class __FlashStringHelper;
+
+// Adafruit_GFX.h declares a getTextBounds(const String&, ...) overload
+// (variants/sim/thirdparty/gfx/) -- MeshCore's own app code never
+// constructs or passes a real Arduino String anywhere (this file's own
+// header comment), so this exists purely to satisfy that one declaration's
+// compile, not to be a real String replacement.
+#include <string>
+class String {
+  std::string _s;
+public:
+  String(const char* s = "") : _s(s ? s : "") {}
+  const char* c_str() const { return _s.c_str(); }
+  size_t length() const { return _s.length(); }
+};
+
+// Real Arduino cores define these; Adafruit_GFX.cpp's drawArc() uses
+// radians(). Same DEG_TO_RAD/RAD_TO_DEG constants as the real macros.
+#ifndef radians
+#define radians(deg) ((deg) * 0.017453292519943295)
+#endif
+#ifndef degrees
+#define degrees(rad) ((rad) * 57.29577951308232)
+#endif
 
 // --- Serial -------------------------------------------------------------
 // Only ever used for Serial.begin() (main.cpp, ignored) and MyMesh.cpp's
