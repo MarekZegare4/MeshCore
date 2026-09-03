@@ -402,6 +402,10 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_send_msg_to_first_contact(const cha
 // the JS ether-tick loop poll "has advert propagation finished yet" without
 // guessing a fixed timeout.
 extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_get_num_contacts() {
+  // Same g_sim_ready gate as every other hook here: before setup() runs,
+  // BaseChatMesh::num_contacts hasn't been seeded to MAX_ANON_CONTACTS yet,
+  // so getNumContacts() would report a negative count.
+  if (!g_sim_ready) return 0;
   return the_mesh.getNumContacts();
 }
 

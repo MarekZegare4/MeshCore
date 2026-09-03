@@ -131,6 +131,9 @@ DEFINES=(
   # Dummy sentinel (no real pin) -- see platformio.ini's own comment on the
   # native env's identical flag.
   -DPIN_BUZZER=0
+  # See platformio.ini's native env for the same flag: without it the splash
+  # screen's "Solo <version>" bar never draws.
+  -DFIRMWARE_SOLO_BUILD=1
   -DMAX_CONTACTS=100
   -DMAX_GROUP_CHANNELS=8
 )

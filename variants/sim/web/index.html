@@ -189,6 +189,26 @@
       console[level] = (...args) => { orig(...args); log('[js] ' + args.join(' ')); };
     }
 
+    // Emscripten's own "both async and sync fetching of the wasm failed" is
+    // near-unreadable to anyone who hasn't debugged this exact runtime
+    // before. Its single most common real-world cause: the page was opened
+    // directly (double-clicked, file://...index.html) instead of served
+    // over http -- `fetch()` on a local file is blocked by CORS in both
+    // Chrome and Safari, with no server-side fix possible (it's the browser
+    // refusing the request, not a missing/misnamed file). Detect that
+    // specific case and say so plainly; anything else, show the raw error
+    // so it's at least visible instead of silently swallowed.
+    function reportBootFailure(err) {
+      console.error(err);
+      if (location.protocol === 'file:') {
+        statusEl.textContent = 'error: this page must be served over http(s), not opened as a file:// URL '
+          + '(the browser blocks the wasm fetch either way). Run e.g. '
+          + '"cd variants/sim/web && python3 -m http.server 8080" and open http://localhost:8080/index.html instead.';
+      } else {
+        statusEl.textContent = 'error: failed to start the wasm module -- ' + err + ' (see devtools console for detail).';
+      }
+    }
+
     if (typeof MeshCoreSim !== 'function') {
       statusEl.textContent = 'error: build/meshcore_sim.js missing or failed to load -- run variants/sim/build_wasm.sh first.';
     } else {
@@ -226,8 +246,17 @@
         // unavoidable limitation any embedded page with boot sound has.
         let audioCtx = null, buzzOsc = null, buzzGain = null, buzzWasPlaying = false;
         function ensureAudio() {
-          if (audioCtx) return;
+          // Not just "create once": a context can also be created in, or later
+          // fall back to, the 'suspended' state (Safari/Firefox start it
+          // suspended even inside a gesture handler; any browser may suspend
+          // it again when the tab is backgrounded). Without resuming it here
+          // on every gesture, the oscillator keeps running silently forever.
+          if (audioCtx) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            return;
+          }
           audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioCtx.state === 'suspended') audioCtx.resume();
           buzzOsc = audioCtx.createOscillator();
           buzzGain = audioCtx.createGain();
           buzzGain.gain.value = 0;
@@ -245,6 +274,17 @@
         // silence regardless of what's "playing" (mutes without touching the
         // sim's own note-advance timing).
         const BUZZER_GAIN = [0, 0.02, 0.05, 0.09, 0.15];
+        // A linear ramp interpolates from the PREVIOUS automation event, not
+        // from "now" -- with no event anchoring the curve's start, a ramp
+        // scheduled long after the last one effectively snaps to its target
+        // instead of easing over the requested few ms, which is exactly the
+        // click the ramp was meant to avoid. Anchoring at the current value
+        // first makes the short fade real.
+        function rampGain(target, seconds, now) {
+          buzzGain.gain.cancelScheduledValues(now);
+          buzzGain.gain.setValueAtTime(buzzGain.gain.value, now);
+          buzzGain.gain.linearRampToValueAtTime(target, now + seconds);
+        }
         function pollBuzzer() {
           if (!audioCtx || !Module || !Module._sim_buzzer_is_playing) return;
           const playing = Module.ccall('sim_buzzer_is_playing', 'number', [], []) === 1;
@@ -252,10 +292,12 @@
           if (playing) {
             const freq = Module.ccall('sim_buzzer_freq_hz', 'number', [], []);
             const vol = Module.ccall('sim_buzzer_get_volume', 'number', [], []);
-            buzzOsc.frequency.setValueAtTime(freq > 0 ? freq : 440, now);
-            buzzGain.gain.linearRampToValueAtTime(freq > 0 ? BUZZER_GAIN[vol] || 0 : 0, now + 0.005);
+            // freq 0 is a real RTTTL rest ('p') -- still "playing", just
+            // silent, so hold the last pitch and drop the gain instead.
+            if (freq > 0) buzzOsc.frequency.setValueAtTime(freq, now);
+            rampGain(freq > 0 ? (BUZZER_GAIN[vol] || 0) : 0, 0.005, now);
           } else if (buzzWasPlaying) {
-            buzzGain.gain.linearRampToValueAtTime(0, now + 0.01);
+            rampGain(0, 0.01, now);
           }
           buzzWasPlaying = playing;
         }
@@ -414,10 +456,7 @@
           const result = Module.ccall('sim_test_login_first_repeater', 'number', ['string'], [pw]);
           log(`login request result=${result} (1=sent,0=send failed,-1=no contact yet; actual accept/reject is async -- check the Admin screen)`);
         });
-      }).catch((err) => {
-        statusEl.textContent = 'failed to start: ' + err;
-        console.error(err);
-      });
+      }).catch(reportBootFailure);
     }
   </script>
 </body>

@@ -250,6 +250,14 @@ public:
   int getCharWidth() const override { return 6 * _text_sz; }
   int getLineHeight() const override { return 9 * _text_sz; }
 
+  // Misc-fixed 6x9 is this backend's one and only font, exactly like a real
+  // SSD1306Display/SH1106Display built with OLED_MISC_FIXED_FONT=1 (both
+  // return true here too). UITask's status-bar indicator height keys off
+  // this (`ind_h = display.isSingleFont() ? lh - 2 : lh`, UITask.cpp) -- left
+  // at the base class's false, the sim drew that row 2px taller than the
+  // real board it's mirroring.
+  bool isSingleFont() const override { return true; }
+
   // Amber-on-black palette (a common OLED look) for LIGHT/DARK; the other
   // Color enumerators (RED/GREEN/BLUE/YELLOW/ORANGE) aren't used on the real
   // monochrome OLED boards this sim mirrors either (DisplayDriver.h's own
@@ -332,9 +340,20 @@ public:
     }, x, y, w, h, bits, (_color != DARK) ? "L" : "D");
   }
 
-  uint16_t getTextWidth(const char* str) override {
-    return str ? (uint16_t)(strlen(str) * getCharWidth()) : 0;
-  }
+  // Measured off the real MiscFixed glyph table, per CODEPOINT -- not
+  // strlen() * 6, which counts UTF-8 BYTES. Since translateUTF8ToBlocks()
+  // above stopped transliterating accents away, strings reaching here really
+  // do carry multi-byte sequences, and a byte count made every accented
+  // character measure double: mis-centred titles, text ellipsized/marquee'd
+  // far too early, right-aligned badges pushed off. Same implementation the
+  // real single-font OLED drivers use (SH1106Display::getTextWidth() ->
+  // miscFixedTextWidth()). Defined out-of-line in target.cpp for the same
+  // reason print() is -- only that TU may include MiscFixedRenderer.h.
+  uint16_t getTextWidth(const char* str) override;
+  // O(1) single-glyph advance, mirroring SSD1306Display::getCodepointWidth()
+  // -> glyphXAdvance(). The base class would otherwise re-encode the
+  // codepoint and call getTextWidth() on it.
+  uint16_t getCodepointWidth(uint32_t cp) override;
 
   // Every draw call above already lands directly on the visible canvas
   // (see the class comment) -- nothing left to flush.

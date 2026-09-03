@@ -2456,7 +2456,8 @@ void UITask::loop() {
   // above, in the #if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
   // block) -- this stdin-poll branch was only ever meant for Phase 1's
   // native terminal target.
-  // Native terminal input: stdin is put into raw/non-canonical mode by
+  //
+  // stdin is put into raw/non-canonical mode by
   // variants/sim/sim_main.cpp's main(), so keys arrive here one at a time
   // with no Enter-to-submit line buffering. Non-blocking select() on fd 0
   // (VMIN=0/VTIME=0 on the fd itself would also work, but select() keeps
@@ -2752,8 +2753,20 @@ void UITask::loop() {
   if ((int32_t)(millis() - next_batt_chck) >= 0) {
     uint16_t raw = AbstractUITask::getBattMilliVolts();
     if (raw > 0) {
+#ifdef SIM_PLATFORM
+      // SimMainBoard::getBattMilliVolts() returns exactly whatever value the
+      // host page's JS last set (see sim_battery_set_mv() in
+      // variants/sim/SimMainBoard.h) -- a clean, instantaneous number, not a
+      // noisy ADC reading. Real hardware needs the EMA below to smooth a
+      // voltage divider's jitter under load; applying that same filter here
+      // just makes a value typed into the demo UI visibly crawl toward its
+      // target over several 8s samples, which reads as the whole sim being
+      // laggy for no benefit the sim actually needs.
+      _batt_mv = raw;
+#else
       // EMA filter: alpha=0.2 (80% old, 20% new) — smooths ADC noise from uneven load
       _batt_mv = (_batt_mv == 0) ? raw : (uint16_t)((_batt_mv * 4u + raw) / 5u);
+#endif
     }
     uint16_t low_mv = _node_prefs ? _node_prefs->low_batt_mv : 0;
     // Don't shut down while on external power (charging) — avoids a shutdown loop.
@@ -2775,7 +2788,16 @@ void UITask::loop() {
       }
       shutdown();
     }
+#ifdef SIM_PLATFORM
+    // A real ADC read has a real cost, worth spacing out 8s apart; the sim's
+    // "read" is just returning a JS-set integer, so there's no reason to sit
+    // on a stale value for up to 8s after Set was clicked. 250ms keeps this
+    // a poll (not a push wired to the input's own event, which would need
+    // its own plumbing) while feeling immediate.
+    next_batt_chck = millis() + 250;
+#else
     next_batt_chck = millis() + 8000;
+#endif
   }
 
   // GPS duty-cycle hold — tells the sensor manager whether *anything* needs

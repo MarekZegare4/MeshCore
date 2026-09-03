@@ -83,17 +83,44 @@ mesh::LocalIdentity radio_new_identity() {
 class SimGfxCanvas : public Adafruit_GFX {
 public:
   uint8_t px[128 * 64];
-  SimGfxCanvas() : Adafruit_GFX(128, 64) { memset(px, 0, sizeof(px)); }
+  // Inclusive bounding box of everything plotted since the last resetDirty().
+  // Without it, print() blitted all 8192 cells on every single call -- and a
+  // busy screen makes dozens of print() calls per frame, at 60fps, so the
+  // JS-side pixel loop dominated the whole frame budget for what is usually
+  // one short row of text.
+  int dx0, dy0, dx1, dy1;
+  SimGfxCanvas() : Adafruit_GFX(128, 64) { memset(px, 0, sizeof(px)); resetDirty(); }
+  void resetDirty() { dx0 = 128; dy0 = 64; dx1 = -1; dy1 = -1; }
+  bool isDirty() const { return dx1 >= dx0 && dy1 >= dy0; }
   void drawPixel(int16_t x, int16_t y, uint16_t color) override {
     if ((unsigned)x >= 128 || (unsigned)y >= 64) return;
     px[y * 128 + x] = (color != 0) ? 1 : 0;
+    if (x < dx0) dx0 = x;
+    if (x > dx1) dx1 = x;
+    if (y < dy0) dy0 = y;
+    if (y > dy1) dy1 = y;
   }
 };
+
+// Real MiscFixed metrics, same source of truth the glyph plotting above
+// uses -- see SimDisplayDriver.h for why these are here and not inline.
+uint16_t SimDisplayDriverCanvas::getTextWidth(const char* str) {
+  return str ? miscFixedTextWidth(str, _text_sz) : 0;
+}
+
+uint16_t SimDisplayDriverCanvas::getCodepointWidth(uint32_t cp) {
+  return miscFixedXAdvance(cp, _text_sz);
+}
 
 void SimDisplayDriverCanvas::print(const char* str) {
   if (!str) return;
   static SimGfxCanvas gfx;
-  memset(gfx.px, 0, sizeof(gfx.px));
+  // Only the previously-dirtied region needs clearing, not all 8 KB.
+  if (gfx.isDirty()) {
+    for (int y = gfx.dy0; y <= gfx.dy1; y++)
+      memset(&gfx.px[y * 128 + gfx.dx0], 0, (size_t)(gfx.dx1 - gfx.dx0 + 1));
+  }
+  gfx.resetDirty();
   gfx.setCursor(_cursor_x, _cursor_y);
   // color arg is just our own internal "lit" marker (1) -- the real on-screen
   // amber/black choice is applied once at blit time below, from _color, same
@@ -105,20 +132,23 @@ void SimDisplayDriverCanvas::print(const char* str) {
 
   // startFrame() already blanks the whole canvas to black every frame, so
   // only the lit pixels need drawing here -- unlit buffer cells are already
-  // correct background. One EM_ASM call blits the whole 128x64 buffer
-  // (reading it directly out of wasm memory, same pattern as drawXbm()
-  // below) rather than one call per glyph pixel.
-  EM_ASM({
-    if (!Module.__simCtx) return;
-    var ctx = Module.__simCtx;
-    var buf = $0;
-    ctx.fillStyle = UTF8ToString($1) === 'L' ? '#ffb000' : '#000';
-    for (var y = 0; y < 64; y++) {
-      for (var x = 0; x < 128; x++) {
-        if (HEAPU8[buf + y * 128 + x]) ctx.fillRect(x, y, 1, 1);
+  // correct background. One EM_ASM call blits the buffer (reading it directly
+  // out of wasm memory, same pattern as drawXbm() below) rather than one call
+  // per glyph pixel, and only over the rows/columns this string actually
+  // touched rather than the full 128x64.
+  if (gfx.isDirty()) {
+    EM_ASM({
+      if (!Module.__simCtx) return;
+      var ctx = Module.__simCtx;
+      var buf = $0;
+      ctx.fillStyle = UTF8ToString($5) === 'L' ? '#ffb000' : '#000';
+      for (var y = $2; y <= $4; y++) {
+        for (var x = $1; x <= $3; x++) {
+          if (HEAPU8[buf + y * 128 + x]) ctx.fillRect(x, y, 1, 1);
+        }
       }
-    }
-  }, gfx.px, (_color != DARK) ? "L" : "D");
+    }, gfx.px, gfx.dx0, gfx.dy0, gfx.dx1, gfx.dy1, (_color != DARK) ? "L" : "D");
+  }
 
   // Same external contract as every other DisplayDriver backend here (see
   // SimDisplayDriver's own ASCII print()): only _cursor_x advances by the

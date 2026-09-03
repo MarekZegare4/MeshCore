@@ -230,7 +230,10 @@ public:
 #ifdef PIN_BUZZER
   // Lets a host page poll the buzzer's current state every frame to drive a
   // Web Audio oscillator (see sim_buzzer_is_playing()/sim_buzzer_freq_hz()
-  // in main.cpp) -- `buzzer` itself is a private member, so a free function
+  // in UITask.cpp, next to sim_enqueue_key() -- they live there, not in
+  // main.cpp, because the `g_sim_ui_task_for_js` pointer they dispatch
+  // through is file-static to that translation unit) -- `buzzer` itself is a
+  // private member, so a free function
   // outside this class needs these to reach it, same reason injectSimKey()
   // above is public.
   // Not const: genericBuzzer::isPlaying() itself isn't const-qualified (its

@@ -429,9 +429,23 @@
       // -- currentInst(key) below always resolves the live one, so a reset
       // instance's sound keeps working against the same AudioContext.
       const buzzAudio = {};
+      // Any gesture anywhere on the page arms BOTH companion instances, not
+      // just the one that was clicked: the whole point of this demo is that A
+      // sends and B *beeps on receipt*, so waiting for a separate gesture on
+      // B's own panel would leave the receiving side silent in exactly the
+      // scenario the page exists to show.
+      function ensureAudioAll() { ensureAudio('A'); ensureAudio('B'); }
       function ensureAudio(key) {
-        if (key === 'R' || buzzAudio[key]) return;
+        if (key === 'R') return;
+        // Also resume, not just create: a context can start suspended
+        // (Safari/Firefox) or be suspended again when the tab is
+        // backgrounded, and would then stay silent forever. See index.html.
+        if (buzzAudio[key]) {
+          if (buzzAudio[key].ctx.state === 'suspended') buzzAudio[key].ctx.resume();
+          return;
+        }
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === 'suspended') ctx.resume();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         gain.gain.value = 0;
@@ -442,6 +456,14 @@
         buzzAudio[key] = { ctx, osc, gain, wasPlaying: false };
       }
       const BUZZER_GAIN = [0, 0.02, 0.05, 0.09, 0.15];
+      // See index.html's rampGain(): a linear ramp interpolates from the last
+      // scheduled event, so it needs an anchor at the current value to
+      // actually fade rather than snap.
+      function rampGain(b, target, seconds, now) {
+        b.gain.gain.cancelScheduledValues(now);
+        b.gain.gain.setValueAtTime(b.gain.gain.value, now);
+        b.gain.gain.linearRampToValueAtTime(target, now + seconds);
+      }
       function pollBuzzer(key) {
         const b = buzzAudio[key];
         const inst = currentInst(key);
@@ -451,10 +473,11 @@
         if (playing) {
           const freq = inst.mod.ccall('sim_buzzer_freq_hz', 'number', [], []);
           const vol = inst.mod.ccall('sim_buzzer_get_volume', 'number', [], []);
-          b.osc.frequency.setValueAtTime(freq > 0 ? freq : 440, now);
-          b.gain.gain.linearRampToValueAtTime(freq > 0 ? (BUZZER_GAIN[vol] || 0) : 0, now + 0.005);
+          // freq 0 is a real RTTTL rest ('p'): still playing, just silent.
+          if (freq > 0) b.osc.frequency.setValueAtTime(freq, now);
+          rampGain(b, freq > 0 ? (BUZZER_GAIN[vol] || 0) : 0, 0.005, now);
         } else if (b.wasPlaying) {
-          b.gain.gain.linearRampToValueAtTime(0, now + 0.01);
+          rampGain(b, 0, 0.01, now);
         }
         b.wasPlaying = playing;
       }
@@ -470,7 +493,7 @@
         let timer = null, longFired = false;
         btn.addEventListener('pointerdown', (e) => {
           e.preventDefault();
-          ensureAudio(key);
+          ensureAudioAll();
           longFired = false;
           timer = setTimeout(() => { longFired = true; sendKeyLongPress(currentInst(key), code); }, LONG_PRESS_MS);
         });
@@ -650,7 +673,7 @@
         const code = resolveKey(e);
         if (code === null) return;
         e.preventDefault();
-        ensureAudio(focusedKey);
+        ensureAudioAll();
         if (keyHold.has(e.key)) return;
         const state = { longFired: false };
         state.timer = setTimeout(() => { state.longFired = true; sendKeyLongPress(currentInst(focusedKey), code); }, LONG_PRESS_MS);
@@ -672,8 +695,22 @@
     }
 
     main().catch((err) => {
-      log('FATAL: ' + err);
       console.error(err);
+      // Emscripten's "both async and sync fetching of the wasm failed" is
+      // near-unreadable on its own -- its single most common real-world
+      // cause is opening this page directly (file://...mesh.html) instead
+      // of serving it over http(s): `fetch()` on a local file is blocked by
+      // CORS in both Chrome and Safari, with no server-side fix (it's the
+      // browser refusing the request, not a missing/misnamed file). See
+      // index.html's matching reportBootFailure() for the single-instance
+      // harness's version of this same check.
+      if (location.protocol === 'file:') {
+        log('FATAL: this page must be served over http(s), not opened as a file:// URL '
+          + '(the browser blocks the wasm fetch either way). Run e.g. '
+          + '"cd variants/sim/web && python3 -m http.server 8080" and open http://localhost:8080/mesh.html instead.');
+      } else {
+        log('FATAL: ' + err);
+      }
     });
   </script>
 </body>
