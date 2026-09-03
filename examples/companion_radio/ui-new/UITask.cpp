@@ -534,6 +534,16 @@ public:
 
   void poll() override {
     if (_shutdown_init && !_task->isButtonPressed()) {  // must wait for USR button to be released
+      // _shutdown_init is never cleared elsewhere -- on real hardware
+      // that's harmless because _board->powerOff() halts the MCU, so
+      // there is no next poll() tick to matter. In the sim, powerOff()
+      // is a deliberate no-op (no real hardware to power off, see
+      // SimMainBoard.h), so without this the instance keeps running and
+      // this branch re-fires shutdown() -> _display->turnOff() on every
+      // single tick forever, repeatedly blacking out its canvas -- which
+      // fights with a freshly reset instance's own boot splash trying to
+      // render onto that same (simInstanceTag-keyed) canvas element.
+      _shutdown_init = false;
       _task->shutdown();
     }
   }
