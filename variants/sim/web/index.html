@@ -213,6 +213,54 @@
           if (Module && Module._sim_enqueue_key_longpress) Module._sim_enqueue_key_longpress(code);
         }
 
+        // Buzzer: a single Web Audio oscillator+gain standing in for the real
+        // piezo buzzer, polled against sim_buzzer_is_playing()/
+        // sim_buzzer_freq_hz() (see genericBuzzer's own #ifdef SIM_PLATFORM
+        // branch, src/helpers/ui/buzzer.cpp) -- those already track exactly
+        // which frequency (0 = silent) should be sounding right now, driven
+        // by the real RTTTL playback the notification/ringtone/startup code
+        // triggers unchanged. AudioContext can't be created before a real
+        // user gesture (browser autoplay policy), so this is created lazily
+        // on first pointerdown/keydown -- the boot startup jingle will
+        // already be over by the time that first gesture happens, same
+        // unavoidable limitation any embedded page with boot sound has.
+        let audioCtx = null, buzzOsc = null, buzzGain = null, buzzWasPlaying = false;
+        function ensureAudio() {
+          if (audioCtx) return;
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          buzzOsc = audioCtx.createOscillator();
+          buzzGain = audioCtx.createGain();
+          buzzGain.gain.value = 0;
+          buzzOsc.type = 'square';   // closer to a piezo buzzer's timbre than a sine
+          buzzOsc.frequency.value = 440;
+          buzzOsc.connect(buzzGain).connect(audioCtx.destination);
+          buzzOsc.start();
+        }
+        // Exposed for console poking / Playwright, same as window.Module above.
+        window.__buzzAudio = () => (audioCtx
+          ? { state: audioCtx.state, gain: buzzGain.gain.value, freq: buzzOsc.frequency.value }
+          : null);
+        // Volume steps roughly mirror genericBuzzer's own real-hardware duty-
+        // cycle table (buzzer.cpp's PCT[]/duty[] -- ~6-8 dB per step); 0 is
+        // silence regardless of what's "playing" (mutes without touching the
+        // sim's own note-advance timing).
+        const BUZZER_GAIN = [0, 0.02, 0.05, 0.09, 0.15];
+        function pollBuzzer() {
+          if (!audioCtx || !Module || !Module._sim_buzzer_is_playing) return;
+          const playing = Module.ccall('sim_buzzer_is_playing', 'number', [], []) === 1;
+          const now = audioCtx.currentTime;
+          if (playing) {
+            const freq = Module.ccall('sim_buzzer_freq_hz', 'number', [], []);
+            const vol = Module.ccall('sim_buzzer_get_volume', 'number', [], []);
+            buzzOsc.frequency.setValueAtTime(freq > 0 ? freq : 440, now);
+            buzzGain.gain.linearRampToValueAtTime(freq > 0 ? BUZZER_GAIN[vol] || 0 : 0, now + 0.005);
+          } else if (buzzWasPlaying) {
+            buzzGain.gain.linearRampToValueAtTime(0, now + 0.01);
+          }
+          buzzWasPlaying = playing;
+        }
+        setInterval(pollBuzzer, 20);
+
         // Press-and-hold for the on-page buttons: start a timer on press-down,
         // fire the long-press call if still held past the threshold, and
         // suppress the short click on release if it already fired.
@@ -221,6 +269,7 @@
           let timer = null, longFired = false;
           btn.addEventListener('pointerdown', (e) => {
             e.preventDefault();
+            ensureAudio();
             longFired = false;
             timer = setTimeout(() => { longFired = true; sendKeyLongPress(code); }, LONG_PRESS_MS);
           });
@@ -297,6 +346,7 @@
           const code = resolveKey(e);
           if (code === null) return;
           e.preventDefault();
+          ensureAudio();
           if (keyHold.has(e.key)) return;   // auto-repeat, not a new press
           const state = { longFired: false };
           state.timer = setTimeout(() => { state.longFired = true; sendKeyLongPress(code); }, LONG_PRESS_MS);

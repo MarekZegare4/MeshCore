@@ -227,6 +227,18 @@ public:
   // never open the context menu at all -- injectSimKey() alone has no way
   // to signal "this press was held".
   void injectSimKeyLongPress(char c);
+#ifdef PIN_BUZZER
+  // Lets a host page poll the buzzer's current state every frame to drive a
+  // Web Audio oscillator (see sim_buzzer_is_playing()/sim_buzzer_freq_hz()
+  // in main.cpp) -- `buzzer` itself is a private member, so a free function
+  // outside this class needs these to reach it, same reason injectSimKey()
+  // above is public.
+  // Not const: genericBuzzer::isPlaying() itself isn't const-qualified (its
+  // NRF52/non-NRF52 siblings don't need to be, so it wasn't worth widening).
+  bool isBuzzerPlaying() { return buzzer.isPlaying(); }
+  uint16_t buzzerFreqHz() const { return buzzer.currentFreqHz(); }
+  uint8_t buzzerVolume() const { return buzzer.getVolume(); }
+#endif
 private:
 #endif
 

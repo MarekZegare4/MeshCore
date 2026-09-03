@@ -75,6 +75,7 @@ SRCS=(
   src/helpers/StaticPoolPacketManager.cpp
   src/helpers/TransportKeyStore.cpp
   src/helpers/TxtDataHelpers.cpp
+  src/helpers/ui/buzzer.cpp
   lib/ed25519/add_scalar.c
   lib/ed25519/fe.c
   lib/ed25519/ge.c
@@ -127,6 +128,9 @@ DEFINES=(
   # DisplayDriver (variants/sim/SimDisplayDriver.h's __EMSCRIPTEN__-guarded
   # SimDisplayDriverCanvas class) instead of the ASCII/stdout one.
   -DDISPLAY_CLASS=SimDisplayDriverCanvas
+  # Dummy sentinel (no real pin) -- see platformio.ini's own comment on the
+  # native env's identical flag.
+  -DPIN_BUZZER=0
   -DMAX_CONTACTS=100
   -DMAX_GROUP_CHANNELS=8
 )

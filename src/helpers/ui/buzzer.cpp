@@ -3,12 +3,19 @@
 #include "buzzer.h"
 
 void genericBuzzer::begin() {
+    // No real GPIO pin to configure in the sim -- PIN_BUZZER there is just a
+    // dummy sentinel value so the #ifdef PIN_BUZZER guards elsewhere (this
+    // file included) activate at all; variants/sim/arduino/Arduino.h
+    // deliberately has no pinMode()/digitalWrite() shim since nothing else
+    // ever needed one before this.
+#ifndef SIM_PLATFORM
     #ifdef PIN_BUZZER_EN
       pinMode(PIN_BUZZER_EN, OUTPUT);
       digitalWrite(PIN_BUZZER_EN, HIGH);
     #endif
     pinMode(PIN_BUZZER, OUTPUT);
     digitalWrite(PIN_BUZZER, LOW); // need to pull low by default to avoid extreme power draw
+#endif
 #if defined(NRF52_PLATFORM)
     _isr_instance = this;
     NRF_TIMER1->TASKS_STOP  = 1;
@@ -39,9 +46,11 @@ void genericBuzzer::startup()  { play(startup_song); }
 void genericBuzzer::shutdown() { play(shutdown_song); }
 
 // ---------------------------------------------------------------------------
-// nRF52 path — direct NRF_PWM2 control, bypasses tone()
+// Shared RTTTL parser -- pure string/arithmetic, no hardware access, so both
+// the NRF52 direct-PWM player and the sim's poll-only player (below) reuse
+// it verbatim instead of each carrying their own copy.
 // ---------------------------------------------------------------------------
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(SIM_PLATFORM)
 
 // Chromatic frequencies for octave 4 (Hz): C C# D D# E F F# G G# A A# B
 static const uint16_t CHROM4[12] = { 262, 277, 294, 311, 330, 349, 370, 392, 415, 440, 466, 494 };
@@ -99,6 +108,13 @@ bool genericBuzzer::_parseNext(const char*& p, uint8_t def_dur, uint8_t def_oct,
     freq = _noteFreq(note, sharp, oct);
     return true;
 }
+
+#endif // NRF52_PLATFORM || SIM_PLATFORM
+
+// ---------------------------------------------------------------------------
+// nRF52 path — direct NRF_PWM2 control, bypasses tone()
+// ---------------------------------------------------------------------------
+#if defined(NRF52_PLATFORM)
 
 uint8_t genericBuzzer::_dutyPct() const {
     // Inverted polarity (0x8000 bit): duty_HIGH = 100% - PCT.
@@ -261,9 +277,67 @@ void genericBuzzer::setVolume(uint8_t level) {
 }
 
 // ---------------------------------------------------------------------------
-// Non-nRF52 path — NonBlockingRtttl + analogWrite for volume
+// Sim path — no real PWM/timer hardware; just track (freq, note-end-time)
+// and let loop() poll millis() to advance, same non-blocking shape as the
+// NonBlockingRtttl path below minus the library. A host page polls
+// currentFreqHz()/isPlaying() every frame to drive a Web Audio oscillator
+// (see variants/sim/web/index.html) instead of sounding real hardware.
 // ---------------------------------------------------------------------------
-#else
+#elif defined(SIM_PLATFORM)
+
+void genericBuzzer::_advance() {
+    uint16_t freq; uint32_t dur_ms;
+    if (_parseNext(_rtttl_pos, _def_dur, _def_oct, _def_bpm, freq, dur_ms)) {
+        _cur_freq = freq;
+        _note_end_ms = millis() + dur_ms;
+    } else {
+        _cur_freq = 0;
+        _rtttl_done = true;
+    }
+}
+
+void genericBuzzer::applyVolume() {
+    // No hardware duty cycle to touch -- the host page maps getVolume()
+    // (0-4) to a Web Audio gain value itself.
+}
+
+void genericBuzzer::play(const char* melody) {
+    if (_is_quiet) return;
+    playForced(melody);
+}
+
+void genericBuzzer::playForced(const char* melody) {
+    _rtttl_done = true;
+    _cur_freq = 0;
+    if (!melody || !*melody) return;
+    const char* notes;
+    _parseHeader(melody, _def_dur, _def_oct, _def_bpm, notes);
+    _rtttl_pos  = notes;
+    _rtttl_done = false;
+    _advance();
+}
+
+bool genericBuzzer::isPlaying() { return !_rtttl_done; }
+
+void genericBuzzer::stop() {
+    _rtttl_done = true;
+    _cur_freq = 0;
+}
+
+void genericBuzzer::loop() {
+    if (_rtttl_done) return;
+    if ((int32_t)(millis() - _note_end_ms) >= 0) _advance();
+}
+
+void genericBuzzer::setVolume(uint8_t level) {
+    _volume_level = level < 5 ? level : 4;
+}
+
+#else  // NRF52_PLATFORM / SIM_PLATFORM
+
+// ---------------------------------------------------------------------------
+// Non-nRF52, non-sim path — NonBlockingRtttl + analogWrite for volume
+// ---------------------------------------------------------------------------
 
 void genericBuzzer::applyVolume() {
     // After tone() sets 50% duty, analogWrite overrides duty on the same PWM channel.
@@ -299,6 +373,6 @@ void genericBuzzer::setVolume(uint8_t level) {
     if (isPlaying()) applyVolume();
 }
 
-#endif  // NRF52_PLATFORM
+#endif  // NRF52_PLATFORM / SIM_PLATFORM
 
 #endif  // PIN_BUZZER

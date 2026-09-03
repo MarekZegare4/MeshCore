@@ -2,9 +2,10 @@
 
 #include <Arduino.h>
 
-// NRF52 uses a custom non-blocking RTTTL player (see buzzer.cpp); only the
-// other platforms pull in the NonBlockingRtttl library here.
-#if !defined(NRF52_PLATFORM)
+// NRF52 (and the sim, see buzzer.cpp) use a custom non-blocking RTTTL
+// player; only the remaining platforms pull in the NonBlockingRtttl library
+// here.
+#if !defined(NRF52_PLATFORM) && !defined(SIM_PLATFORM)
   #include <NonBlockingRtttl.h>
 #endif
 
@@ -44,6 +45,25 @@ class genericBuzzer
         const char *shutdown_song = "Shutdown:d=4,o=5,b=100:8g5,16e5,16c5";
         bool _is_quiet = true;
 
+#if defined(NRF52_PLATFORM) || defined(SIM_PLATFORM)
+        // Shared RTTTL cursor state + parser, reused by both the NRF52
+        // direct-PWM player below and the sim's poll-only player (buzzer.cpp,
+        // #elif defined(SIM_PLATFORM)) -- the parser itself never touches
+        // hardware, only _nrfStartPwm/_nrfStopPwm/the TIMER1 IRQ do, so it's
+        // free to share between the two.
+        const char*   _rtttl_pos   = nullptr;
+        bool          _rtttl_done  = true;
+        uint8_t       _def_dur     = 4;
+        uint8_t       _def_oct     = 5;
+        uint16_t      _def_bpm     = 120;
+
+        static uint16_t _noteFreq(char letter, bool sharp, uint8_t octave);
+        static bool     _parseNext(const char*& pos, uint8_t def_dur, uint8_t def_oct,
+                                   uint16_t bpm, uint16_t& freq_hz, uint32_t& dur_ms);
+        static void     _parseHeader(const char* melody, uint8_t& def_dur, uint8_t& def_oct,
+                                     uint16_t& bpm, const char*& notes_start);
+#endif
+
 #if defined(NRF52_PLATFORM)
         // Own RTTTL player — bypasses tone() to allow volume control from note start.
         // tone() pre-computes seq_refresh so the DMA repeats 50% duty for ~30ms before
@@ -51,23 +71,13 @@ class genericBuzzer
         // and setting REFRESH=0, DMA re-reads _duty_buf every period so duty takes effect
         // immediately at SEQSTART.
         volatile uint16_t _duty_buf = 0;   // DMA source — must stay in RAM
-        const char*   _rtttl_pos   = nullptr;
-        bool          _rtttl_done  = true;
         bool          _pwm_on      = false;
-        uint8_t       _def_dur     = 4;
-        uint8_t       _def_oct     = 5;
-        uint16_t      _def_bpm     = 120;
 
         void    _nrfBegin(const char* melody);
         void    _nrfAdvance();
         void    _nrfStartPwm(uint16_t freq);
         void    _nrfStopPwm();
         uint8_t _dutyPct() const;
-        static uint16_t _noteFreq(char letter, bool sharp, uint8_t octave);
-        static bool     _parseNext(const char*& pos, uint8_t def_dur, uint8_t def_oct,
-                                   uint16_t bpm, uint16_t& freq_hz, uint32_t& dur_ms);
-        static void     _parseHeader(const char* melody, uint8_t& def_dur, uint8_t& def_oct,
-                                     uint16_t& bpm, const char*& notes_start);
 
         // TIMER1-driven note advance: a hardware compare interrupt calls
         // _nrfAdvance() at the exact moment the current note's duration ends,
@@ -84,5 +94,22 @@ class genericBuzzer
         // a free function — the vector table requires that exact symbol — so
         // it needs access from outside the class to dispatch into it.
         static void _timer1ISR();
+    private:
+#elif defined(SIM_PLATFORM)
+        // No real PWM/timer hardware to drive -- just track which frequency
+        // (0 = silent) should be sounding right now and when the current
+        // note ends, advanced by plain millis()-polling from loop() (same
+        // non-blocking shape as the NonBlockingRtttl-driven platforms, not
+        // the NRF52 IRQ path). A host page polls currentFreqHz()/isPlaying()
+        // every frame to drive a Web Audio oscillator -- see
+        // variants/sim/web/index.html.
+        uint32_t _note_end_ms = 0;
+
+        void _advance();
+
+    public:
+        uint16_t currentFreqHz() const { return _cur_freq; }
+    private:
+        uint16_t _cur_freq = 0;
 #endif
 };

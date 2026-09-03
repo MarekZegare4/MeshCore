@@ -2157,6 +2157,23 @@ extern "C" EMSCRIPTEN_KEEPALIVE void sim_enqueue_key(char c) {
 extern "C" EMSCRIPTEN_KEEPALIVE void sim_enqueue_key_longpress(char c) {
   if (g_sim_ui_task_for_js) g_sim_ui_task_for_js->injectSimKeyLongPress(c);
 }
+
+#ifdef PIN_BUZZER
+// Polled by the host page every ~20ms (see web/index.html/mesh.html) to
+// drive a Web Audio oscillator standing in for the real piezo buzzer --
+// genericBuzzer's own #ifdef SIM_PLATFORM branch (src/helpers/ui/buzzer.cpp)
+// tracks (is a note sounding, at what frequency) instead of touching real
+// PWM/timer hardware; these two exports are just the read side of that.
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_buzzer_is_playing() {
+  return (g_sim_ui_task_for_js && g_sim_ui_task_for_js->isBuzzerPlaying()) ? 1 : 0;
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_buzzer_freq_hz() {
+  return g_sim_ui_task_for_js ? (int)g_sim_ui_task_for_js->buzzerFreqHz() : 0;
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_buzzer_get_volume() {
+  return g_sim_ui_task_for_js ? (int)g_sim_ui_task_for_js->buzzerVolume() : 0;
+}
+#endif
 #endif
 
 bool UITask::dequeueKey(char& c) {

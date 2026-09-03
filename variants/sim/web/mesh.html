@@ -421,12 +421,56 @@
       // current when the listener was attached.
       function currentInst(key) { return key === 'A' ? A : key === 'B' ? B : R; }
 
+      // Buzzer: one Web Audio oscillator+gain per companion instance (not R
+      // -- a headless simple_repeater has no UITask/buzzer at all), same
+      // mechanism as web/index.html (see that file's own comment). Keyed by
+      // instance tag rather than closing over A/B directly, since Reset
+      // (resetInstance() above) replaces those bindings with a fresh module
+      // -- currentInst(key) below always resolves the live one, so a reset
+      // instance's sound keeps working against the same AudioContext.
+      const buzzAudio = {};
+      function ensureAudio(key) {
+        if (key === 'R' || buzzAudio[key]) return;
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        osc.type = 'square';
+        osc.frequency.value = 440;
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        buzzAudio[key] = { ctx, osc, gain, wasPlaying: false };
+      }
+      const BUZZER_GAIN = [0, 0.02, 0.05, 0.09, 0.15];
+      function pollBuzzer(key) {
+        const b = buzzAudio[key];
+        const inst = currentInst(key);
+        if (!b || !inst || !inst.isReady() || !inst.mod._sim_buzzer_is_playing) return;
+        const playing = inst.mod.ccall('sim_buzzer_is_playing', 'number', [], []) === 1;
+        const now = b.ctx.currentTime;
+        if (playing) {
+          const freq = inst.mod.ccall('sim_buzzer_freq_hz', 'number', [], []);
+          const vol = inst.mod.ccall('sim_buzzer_get_volume', 'number', [], []);
+          b.osc.frequency.setValueAtTime(freq > 0 ? freq : 440, now);
+          b.gain.gain.linearRampToValueAtTime(freq > 0 ? (BUZZER_GAIN[vol] || 0) : 0, now + 0.005);
+        } else if (b.wasPlaying) {
+          b.gain.gain.linearRampToValueAtTime(0, now + 0.01);
+        }
+        b.wasPlaying = playing;
+      }
+      setInterval(() => { pollBuzzer('A'); pollBuzzer('B'); }, 20);
+      // Exposed for console poking / Playwright, same as window.__meshSim below.
+      window.__buzzAudio = (key) => (buzzAudio[key]
+        ? { state: buzzAudio[key].ctx.state, gain: buzzAudio[key].gain.gain.value, freq: buzzAudio[key].osc.frequency.value }
+        : null);
+
       document.querySelectorAll('button[data-instance]').forEach((btn) => {
         const key = btn.dataset.instance;
         const code = Number(btn.dataset.key);
         let timer = null, longFired = false;
         btn.addEventListener('pointerdown', (e) => {
           e.preventDefault();
+          ensureAudio(key);
           longFired = false;
           timer = setTimeout(() => { longFired = true; sendKeyLongPress(currentInst(key), code); }, LONG_PRESS_MS);
         });
@@ -606,6 +650,7 @@
         const code = resolveKey(e);
         if (code === null) return;
         e.preventDefault();
+        ensureAudio(focusedKey);
         if (keyHold.has(e.key)) return;
         const state = { longFired: false };
         state.timer = setTimeout(() => { state.longFired = true; sendKeyLongPress(currentInst(focusedKey), code); }, LONG_PRESS_MS);
