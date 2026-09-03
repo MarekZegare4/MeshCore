@@ -264,6 +264,26 @@ public:
   // one .cpp would duplicate the font's static const tables in each).
   void print(const char* str) override;
 
+  // Real MiscFixedFont covers the full glyph set print() draws above, so
+  // unlike DisplayDriver's base assumption ("no extended glyphs -- fall back
+  // to transliterateCodepoint()'s ASCII substitution"), this driver never
+  // needs that. Matches a real board's SH1106Display/SSD1306Display, whose
+  // own translateUTF8ToBlocks() override (gated on _single_font) does the
+  // same plain passthrough once OLED_MISC_FIXED_FONT is enabled. Without
+  // this override here, anything routed through translateUTF8ToBlocks()
+  // (KeyboardWidget's live-typing preview line, screen titles, ...) would
+  // inherit the base class's ASCII transliteration and silently strip every
+  // accented character down to its plain-Latin base -- e.g. typing "ó" via
+  // the accent-picker popup would show "o" in the text-entry preview even
+  // though the popup itself (which prints its own variants directly, not
+  // through this path) and the underlying buffer both had it right.
+  void translateUTF8ToBlocks(char* dest, const char* src, size_t dest_size) override {
+    size_t n = strlen(src);
+    if (n >= dest_size) n = dest_size - 1;
+    memcpy(dest, src, n);
+    dest[n] = '\0';
+  }
+
   void fillRect(int x, int y, int w, int h) override {
     EM_ASM({
       if (!Module.__simCtx) return;
