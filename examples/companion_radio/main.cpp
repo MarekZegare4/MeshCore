@@ -446,6 +446,26 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_show_all_home_pages() {
   return 1;
 }
 
+// tz_offset_hours (NodePrefs.h) defaults to 0 (UTC) -- real hardware has
+// no other way to know the visitor's timezone, so a real user sets it
+// manually in Settings > System > Timezone. RTCClock itself (SimRTCClock.h)
+// is already correct live UTC (time(NULL)), so a demo instance's Clock
+// screen otherwise displays correct-but-UTC time, which reads as "wrong"
+// to a visitor who never opened Settings -- exactly the site's own
+// "would be nice if the time was synced with the computer" ask. Called
+// once after boot with the browser's own timezone offset (whole hours
+// only -- tz_offset_hours is an int8_t, same real-hardware constraint a
+// half-hour-offset timezone would hit too).
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_set_timezone_hours(int hours) {
+  if (!g_sim_ready) return 0;
+  NodePrefs* prefs = the_mesh.getNodePrefs();
+  if (!prefs) return 0;
+  if (hours < -12) hours = -12;
+  if (hours > 14) hours = 14;
+  prefs->tz_offset_hours = (int8_t)hours;
+  return 1;
+}
+
 #ifdef DISPLAY_CLASS
 // Jumps the on-device UI straight to the DM thread with the first known
 // ADV_TYPE_CHAT contact (UITask::openContactDM() -- the exact same real
