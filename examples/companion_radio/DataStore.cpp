@@ -862,7 +862,17 @@ void DataStore::restoreRTCTime() {
     uint32_t t = 0;
     file.read((uint8_t *)&t, sizeof(t));
     file.close();
+#ifndef SIM_PLATFORM
+    // Real hardware has no other way to know the time before a GPS fix or
+    // a phone/CLI sync, so restoring the last-known saved time is the
+    // right call there. The sim's RTCClock (SimRTCClock.h) is already
+    // backed by the real host wall clock (time(NULL)) from the moment it's
+    // constructed -- overwriting that with a stale save from a previous
+    // visit (persisted via IDBFS, see the site's "returning visitor" note)
+    // would make a returning instance's on-screen clock drift away from
+    // the visitor's own real time instead of just showing it.
     if (t > 1000000000UL) _clock->setCurrentTime(t);
+#endif
   }
 }
 

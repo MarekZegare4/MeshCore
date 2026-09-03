@@ -409,6 +409,22 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_get_num_contacts() {
   return the_mesh.getNumContacts();
 }
 
+// Real hardware ships with NodePrefs::HP_DEFAULT -- a curated 5-page Home
+// carousel (Clock/Tools/Shutdown/Favourites/Map) -- so a first-time user
+// isn't handed 13 pages to joystick through; the rest (Recent/Radio/
+// Bluetooth/Advert/GPS/Sensors) are opt-in via Settings > Home Pages. The
+// demo site exists specifically to show off the whole feature set, so it
+// calls this once right after boot to opt every instance into all of them
+// instead -- 0 means "all visible" (see the home_pages_mask comment in
+// NodePrefs.h), same as an as-yet-unset field on a factory-fresh device.
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_show_all_home_pages() {
+  if (!g_sim_ready) return 0;
+  NodePrefs* prefs = the_mesh.getNodePrefs();
+  if (!prefs) return 0;
+  prefs->home_pages_mask = 0;
+  return 1;
+}
+
 #ifdef DISPLAY_CLASS
 // Jumps the on-device UI straight to the DM thread with the first known
 // ADV_TYPE_CHAT contact (UITask::openContactDM() -- the exact same real
