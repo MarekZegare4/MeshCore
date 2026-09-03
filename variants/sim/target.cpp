@@ -9,11 +9,31 @@ SimSerialClass Serial;
 SimMainBoard board;
 SimRadio radio_driver;
 SimRTCClock rtc_clock;
-SensorManager sensors;   // base class: no real sensors in Phase 1
+// Phase 4: SimSensorManager wires in the sim's GPS + one JS-settable
+// environment channel -- see SimSensorManager.h (its methods' bodies are
+// defined further down in this file, not there, for the reason explained
+// in that header's comment).
+SimSensorManager sensors;
 
 #ifdef DISPLAY_CLASS
 DISPLAY_CLASS display;
 #endif
+
+// SimSensorManager's methods (see that header's comment on why they're
+// defined here rather than inline).
+LocationProvider* SimSensorManager::getLocationProvider() {
+  return &sim_location_provider();
+}
+
+bool SimSensorManager::querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) {
+  if ((requester_permissions & TELEM_PERM_LOCATION) && sim_location_provider().isValid()) {
+    telemetry.addGPS(TELEM_CHANNEL_SELF, (float)node_lat, (float)node_lon, (float)node_altitude);
+  }
+  if (requester_permissions & TELEM_PERM_ENVIRONMENT) {
+    telemetry.addTemperature(TELEM_CHANNEL_SELF + 1, envTemperatureRef());
+  }
+  return true;
+}
 
 bool radio_init() {
   // No real radio hardware to initialise -- always succeeds (see
@@ -28,7 +48,15 @@ mesh::LocalIdentity radio_new_identity() {
   return mesh::LocalIdentity(&rng);
 }
 
-#ifdef __EMSCRIPTEN__
+// DISPLAY_CLASS too, not just __EMSCRIPTEN__: SimDisplayDriverCanvas itself
+// only exists when DISPLAY_CLASS is defined (target.h only #includes
+// SimDisplayDriver.h -- where the class lives -- inside its own #ifdef
+// DISPLAY_CLASS block), and the headless repeater/room_server wasm builds
+// never define DISPLAY_CLASS at all. This was a latent gap from the
+// pixel-perfect-font change (companion_radio's own build_wasm.sh happens to
+// always define DISPLAY_CLASS, so it never surfaced there) -- only found now
+// that build_wasm_repeater.sh got rebuilt for Phase 4.
+#if defined(__EMSCRIPTEN__) && defined(DISPLAY_CLASS)
 // Real bitmap-font text rendering for SimDisplayDriverCanvas::print()
 // (declared in SimDisplayDriver.h, defined here -- the one TU allowed to
 // include MiscFixedRenderer.h; see that header's own "include only from a

@@ -49,12 +49,15 @@ public:
 };
 
 // Single instance, mirroring the pattern of every other Sim* global
-// (board/radio_driver/rtc_clock/sensors) declared in target.h/target.cpp --
-// this one isn't wired into target.h/.cpp itself since nothing on the
-// SIM_PLATFORM boot path currently constructs a LocationProvider at all
-// (see the class comment above), so it lives here instead as a
-// self-contained, opt-in addition.
-extern SensorManager sensors;   // defined in variants/sim/target.cpp
+// (board/radio_driver/rtc_clock/sensors) declared in target.h/target.cpp.
+// Typed as SimSensorManager, not the SensorManager base, because C++
+// requires every declaration of the same global variable to agree on its
+// exact type -- target.cpp's actual `SimSensorManager sensors;` definition
+// would otherwise conflict with a base-typed extern here. This only
+// compiles because target.h includes SimSensorManager.h (which declares
+// the class) before this file -- see target.h's own comment on that
+// ordering.
+extern SimSensorManager sensors;   // defined in variants/sim/target.cpp
 inline SimLocationProvider& sim_location_provider() {
   static SimLocationProvider instance;
   return instance;

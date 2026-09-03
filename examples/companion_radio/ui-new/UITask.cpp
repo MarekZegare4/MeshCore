@@ -2424,7 +2424,21 @@ void UITask::loop() {
   } else if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
     if (!_locked) enqueueKey(handleTripleClick(KEY_SELECT));
   }
-#elif defined(SIM_PLATFORM)
+#elif defined(SIM_PLATFORM) && !defined(__EMSCRIPTEN__)
+  // Native terminal input ONLY -- this branch previously had no
+  // __EMSCRIPTEN__ exclusion, so it also compiled into the wasm build
+  // (SIM_PLATFORM is defined there too, and UI_HAS_JOYSTICK/PIN_USER_BTN
+  // are both unset for variants/sim). Every tick it called real select()/
+  // read() on fd 0; under Emscripten, with no stdin ever wired up, that
+  // hits the runtime's default TTY device, which falls back to a real,
+  // blocking window.prompt("Input: ") -- so every single browser tab
+  // running the wasm build was popping a native dialog on nearly every
+  // frame, discovered by seeing Playwright's page 'dialog' event fire
+  // continuously from the moment the module boots. The wasm build's own
+  // input already comes through sim_enqueue_key()/injectSimKey() (see
+  // above, in the #if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+  // block) -- this stdin-poll branch was only ever meant for Phase 1's
+  // native terminal target.
   // Native terminal input: stdin is put into raw/non-canonical mode by
   // variants/sim/sim_main.cpp's main(), so keys arrive here one at a time
   // with no Enter-to-submit line buffering. Non-blocking select() on fd 0

@@ -66,6 +66,41 @@
   .dpad .down  { grid-column: 2; grid-row: 3; }
   .row { display: flex; gap: 8px; }
   .row button { padding: 8px 14px; }
+  .panel {
+    width: 512px;
+    box-sizing: border-box;
+    background: #222;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+  }
+  .panel input {
+    background: #111;
+    color: #eee;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+  .panel input[type=number] { width: 70px; }
+  .panel input[type=password] { width: 110px; }
+  .panel button {
+    background: #2a2a2a;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .panel button:active { background: #444; }
+  .panel .reset-btn { background: #4a2222; border-color: #733; }
+  .panel .reset-btn:active { background: #622; }
   #log {
     width: 512px;
     height: 90px;
@@ -95,6 +130,30 @@
     <button data-key="27">Esc / Cancel</button>
     <button data-key="0xF2">Prev (p)</button>
     <button data-key="0xF1">Next (n)</button>
+    <button id="btn-reset" class="reset-btn">Reset</button>
+  </div>
+
+  <div class="panel">
+    <span>GPS:</span>
+    <input id="gps-lat" type="number" step="0.0001" placeholder="lat" value="51.5074">
+    <input id="gps-lon" type="number" step="0.0001" placeholder="lon" value="-0.1278">
+    <input id="gps-alt" type="number" step="1" placeholder="alt (m)" value="35">
+    <button id="btn-gps-set">Set GPS</button>
+  </div>
+
+  <div class="panel">
+    <span>Sensors:</span>
+    <label>Battery (mV) <input id="batt-mv" type="number" step="10" value="4000"></label>
+    <button id="btn-batt-set">Set</button>
+    <label>Temp (&deg;C) <input id="env-temp" type="number" step="0.5" value="21"></label>
+    <button id="btn-temp-set">Set</button>
+  </div>
+
+  <div class="panel">
+    <span>Admin:</span>
+    <button id="btn-admin-open">Open Admin (first repeater)</button>
+    <input id="admin-pw" type="password" placeholder="password" value="password">
+    <button id="btn-admin-login">Login</button>
   </div>
 
   <div id="log"></div>
@@ -109,6 +168,17 @@
       logEl.appendChild(line);
       logEl.scrollTop = logEl.scrollHeight;
     }
+
+    // Buttons must never grab real browser keyboard focus -- without this a
+    // clicked button (e.g. Reset) stays focused, and a LATER physical
+    // Enter/Space keypress meant for the simulated device's own OK button
+    // instead re-activates that still-focused HTML button (a real browser
+    // default for <button> elements). preventDefault() on mousedown is the
+    // standard way to suppress focus-on-click without affecting the
+    // click/pointerdown/pointerup handlers below (separate event types).
+    document.querySelectorAll('button').forEach((btn) => {
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
+    });
 
     // console.log/.error from inside the wasm module (the sim_fs_mount_idbfs
     // EM_ASM block, IDBFS internals, etc.) are useful to see in-page too,
@@ -163,35 +233,136 @@
           btn.addEventListener('pointercancel', cancel);
         });
 
-        // Keyboard passthrough: arrows/Enter/Escape/n/p/WASD, same mapping
-        // UITask.cpp's native SIM_PLATFORM stdin branch already uses. Same
-        // press-and-hold logic as the buttons above, keyed by e.key so
-        // multiple keys can be held independently; the `keyHold.has()` guard
-        // ignores the browser's own keydown auto-repeat (which would
-        // otherwise restart the long-press timer on every repeat tick).
+        // Keyboard passthrough: arrows/Enter/Escape/n/p, same mapping
+        // UITask.cpp's native SIM_PLATFORM stdin branch already uses, PLUS
+        // full printable-ASCII passthrough (letters/digits/punctuation) and
+        // a real Backspace -- this is what makes typing a node name, a chat
+        // message, or an admin password with a real keyboard work at all.
+        // KeyboardWidget.h's own comment on its "direct-typing passthrough"
+        // branch (0x20-0x7E insert, 0x08 backspace, KEY_KB_ENTER submits)
+        // confirms real hardware already accepts exactly these raw byte
+        // values from a literal-ASCII input source (its own example is
+        // CardKB) -- so this is that same input source, just fed from a
+        // real keyboard's keydown events instead of an I2C CardKB
+        // peripheral. Tab -> KEY_KB_ENTER ("submit the field") rather than
+        // Enter itself: Enter must keep meaning KEY_ENTER (13, ordinary
+        // menu-select) everywhere else in the UI, and Tab has no other
+        // meaning here to collide with. Backspace no longer doubles as
+        // Cancel (it did before this change) -- Escape already covers
+        // Cancel identically, and a working Backspace-while-typing matters
+        // more. WASD and space-as-Enter (both present before this change)
+        // are gone too, for the same reason -- 'w'/'a'/'s'/'d'/' ' must now
+        // type as themselves. Arrow keys still work exactly as before.
+        // Same press-and-hold logic as the buttons above, keyed by
+        // e.key so multiple keys can be held independently; the
+        // `keyHold.has()` guard ignores the browser's own keydown
+        // auto-repeat (which would otherwise restart the long-press timer
+        // on every repeat tick).
+        // NOTE: no 'n'/'p' Next/Prev shortcuts here (there were in earlier
+        // phases, before full ASCII passthrough existed) -- they collided
+        // with typing the literal letters 'n'/'p' into any text field. The
+        // on-screen Next(n)/Prev(p) buttons below still work via click.
         const KEYMAP = {
           ArrowUp: 0xB5, ArrowDown: 0xB6, ArrowLeft: 0xB4, ArrowRight: 0xB7,
-          Enter: 13, ' ': 13,
-          Escape: 27, Backspace: 27,
-          w: 0xB5, s: 0xB6, a: 0xB4, d: 0xB7,
-          n: 0xF1, p: 0xF2,
+          Enter: 13,
+          Escape: 27,
+          Backspace: 0x08,
+          Tab: 0x05,   // KEY_KB_ENTER -- submit the current text field
         };
+        // Printable ASCII passthrough (KeyboardWidget.h's 0x20-0x7E direct-
+        // insert range) -- covers every letter/digit/punctuation key not
+        // already claimed by KEYMAP above. A single-character e.key IS the
+        // literal typed character already (browsers report the
+        // shift-applied glyph, e.g. 'A' or '!', not a raw scancode), so no
+        // separate shift-handling is needed here.
+        function resolveKey(e) {
+          if (e.key in KEYMAP) return KEYMAP[e.key];
+          if (e.key.length === 1) {
+            const c = e.key.charCodeAt(0);
+            if (c >= 0x20 && c <= 0x7E) return c;
+          }
+          return null;
+        }
+        // Don't hijack typing into the GPS/sensor/admin-password <input>
+        // fields below -- those are native HTML inputs the browser already
+        // handles; only forward keystrokes to the simulated device when
+        // focus is elsewhere (the canvas, the body, a button).
+        function focusedOnRealInput() {
+          const el = document.activeElement;
+          return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+        }
         const keyHold = new Map();
         window.addEventListener('keydown', (e) => {
-          if (!(e.key in KEYMAP)) return;
+          if (focusedOnRealInput()) return;
+          const code = resolveKey(e);
+          if (code === null) return;
           e.preventDefault();
           if (keyHold.has(e.key)) return;   // auto-repeat, not a new press
-          const code = KEYMAP[e.key];
           const state = { longFired: false };
           state.timer = setTimeout(() => { state.longFired = true; sendKeyLongPress(code); }, LONG_PRESS_MS);
           keyHold.set(e.key, state);
         });
         window.addEventListener('keyup', (e) => {
+          if (focusedOnRealInput()) return;
           const state = keyHold.get(e.key);
           if (!state) return;
           clearTimeout(state.timer);
-          if (!state.longFired) sendKey(KEYMAP[e.key]);
+          if (!state.longFired) sendKey(resolveKey(e));
           keyHold.delete(e.key);
+        });
+
+        // Reset: a real reset button re-runs setup() from scratch on real
+        // hardware -- under Emscripten, board.reboot() (SimMainBoard.h)
+        // just exit(0)s, which is inert with -sEXIT_RUNTIME=0 (freezes the
+        // tab instead of resetting anything), so this is a real browser
+        // page reload instead. Identity/prefs already persist across this
+        // via IDBFS (see this file's own header comment) -- same proof
+        // Phase 2 established.
+        document.getElementById('btn-reset').addEventListener('click', () => {
+          location.reload();
+        });
+
+        // GPS: wires up the already-exported sim_location_set() (see
+        // SimLocationProvider.h) -- now that SimSensorManager actually
+        // plugs a LocationProvider into getLocationProvider(), the
+        // on-device Compass/Nearby screens will show a real fix after this.
+        document.getElementById('btn-gps-set').addEventListener('click', () => {
+          const lat = parseFloat(document.getElementById('gps-lat').value) || 0;
+          const lon = parseFloat(document.getElementById('gps-lon').value) || 0;
+          const alt = parseFloat(document.getElementById('gps-alt').value) || 0;
+          Module.ccall('sim_location_set', null, ['number','number','number'], [lat, lon, alt]);
+          log(`GPS set: ${lat}, ${lon}, ${alt}m`);
+        });
+
+        // Sensors: battery (SimMainBoard.h) and one representative
+        // environment channel (SimSensorManager.h) -- both JS-settable the
+        // same way sim_location_set() already was.
+        document.getElementById('btn-batt-set').addEventListener('click', () => {
+          const mv = parseInt(document.getElementById('batt-mv').value, 10) || 0;
+          Module.ccall('sim_battery_set_mv', null, ['number'], [mv]);
+          log(`battery set: ${mv}mV`);
+        });
+        document.getElementById('btn-temp-set').addEventListener('click', () => {
+          const c = parseFloat(document.getElementById('env-temp').value) || 0;
+          Module.ccall('sim_env_temperature_set', null, ['number'], [c]);
+          log(`env temperature set: ${c}C`);
+        });
+
+        // Admin: open the real AdminScreen for the first known repeater/
+        // room contact, then submit a login via the real sendRoomLogin()
+        // (see the sim_test_open_admin_with_first_repeater()/
+        // sim_test_login_first_repeater() hooks in
+        // examples/companion_radio/main.cpp) -- the sim's repeater/room
+        // server default to ADMIN_PASSWORD "password" (never overridden by
+        // variants/sim/), so that's this field's default value too.
+        document.getElementById('btn-admin-open').addEventListener('click', () => {
+          const ok = Module.ccall('sim_test_open_admin_with_first_repeater', 'number', [], []);
+          log(ok ? 'opened AdminScreen for first repeater/room contact' : 'no repeater/room contact known yet');
+        });
+        document.getElementById('btn-admin-login').addEventListener('click', () => {
+          const pw = document.getElementById('admin-pw').value;
+          const result = Module.ccall('sim_test_login_first_repeater', 'number', ['string'], [pw]);
+          log(`login request result=${result} (1=sent,0=send failed,-1=no contact yet; actual accept/reject is async -- check the Admin screen)`);
         });
       }).catch((err) => {
         statusEl.textContent = 'failed to start: ' + err;

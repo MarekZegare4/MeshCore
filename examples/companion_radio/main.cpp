@@ -422,4 +422,54 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_open_dm_with_first_contact() {
   return 1;
 }
 #endif
+
+// Same idea as findFirstChatContact() above, but for the first known
+// admin-loginable contact (a repeater or room server) instead of another
+// chat instance.
+static bool findFirstAdminContact(ContactInfo& out) {
+  int n = the_mesh.getNumContacts();
+  for (int i = 0; i < n; i++) {
+    ContactInfo ci;
+    if (the_mesh.getContactByIdx(MAX_ANON_CONTACTS + i, ci) &&
+        (ci.type == ADV_TYPE_REPEATER || ci.type == ADV_TYPE_ROOM)) {
+      out = ci;
+      return true;
+    }
+  }
+  return false;
+}
+
+#ifdef DISPLAY_CLASS
+// Jumps the on-device UI straight to AdminScreen for the first known
+// repeater/room contact -- UITask::openAdminFor(ci, false), the exact same
+// function NearbyScreen's "Nodes" Hold-Enter admin action calls (see
+// NearbyScreen.h:709), so a test harness can screenshot the real Admin
+// screen instead of scripting contact-list navigation key-by-key. Returns
+// 1 if a repeater/room contact was found and the screen switched, 0 if not.
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_open_admin_with_first_repeater() {
+  if (!g_sim_ready) return 0;
+  ContactInfo ci;
+  if (!findFirstAdminContact(ci)) return 0;
+  ui_task.openAdminFor(ci, false);
+  return 1;
+}
+#endif
+
+// Submits a login against the first known repeater/room contact via
+// MyMesh::sendRoomLogin() -- the exact same function AdminScreen's own
+// submit button calls (examples/companion_radio/ui-new/AdminScreen.h) --
+// so a test harness can verify the admin/password flow without scripting
+// the on-device virtual keyboard. Only reports whether the login *request*
+// was sent (matching sim_test_send_msg_to_first_contact()'s same
+// synchronous-only contract) -- the actual accept/reject arrives async via
+// AbstractUITask::onRoomLoginResult() and is visible on AdminScreen once
+// sim_test_open_admin_with_first_repeater() has switched to it. Returns 1
+// if sent, 0 if send failed, -1 if no repeater/room contact known yet.
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_login_first_repeater(const char* password) {
+  if (!g_sim_ready) return -1;
+  ContactInfo ci;
+  if (!findFirstAdminContact(ci)) return -1;
+  uint32_t est_timeout;
+  return the_mesh.sendRoomLogin(ci, password, est_timeout) ? 1 : 0;
+}
 #endif

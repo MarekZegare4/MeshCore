@@ -98,6 +98,33 @@
   }
   .ether-config { font-size: 11px; color: #999; display: flex; gap: 14px; align-items: center; }
   .ether-config input[type=number] { width: 56px; }
+  .device.focused canvas.sim-canvas { border-color: #ffb000; }
+  .device-panel {
+    width: 100%;
+    box-sizing: border-box;
+    background: #222;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 6px 8px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+  }
+  .device-panel input {
+    background: #111;
+    color: #eee;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 3px 5px;
+    font-size: 11px;
+  }
+  .device-panel input[type=number] { width: 58px; }
+  .device-panel input[type=password] { width: 90px; }
+  .device-panel button { padding: 4px 8px; font-size: 11px; }
+  .reset-btn { background: #4a2222 !important; border-color: #733 !important; }
+  .reset-btn:active { background: #622 !important; }
 </style>
 </head>
 <body>
@@ -105,7 +132,7 @@
   <div class="sub">Real companion_radio x2 (A, B) + real simple_repeater (R), same compiled wasm as the single-instance harness -- topology is A &lt;-&gt; R &lt;-&gt; B only (no direct A-B link), so any delivered message proves real relay routing.</div>
 
   <div class="devices">
-    <div class="device">
+    <div class="device" id="device-A" data-instance="A">
       <h2>Instance A (companion_radio)</h2>
       <canvas id="sim-canvas-A" class="sim-canvas" width="128" height="64"></canvas>
       <div class="status" id="status-A">loading...</div>
@@ -116,6 +143,26 @@
         <button data-instance="A" data-key="0xB7">&rarr;</button>
         <button data-instance="A" data-key="0xB6">&darr;</button>
         <button data-instance="A" data-key="27">Esc</button>
+        <button data-instance="A" data-key="0xF2">Prev</button>
+        <button data-instance="A" data-key="0xF1">Next</button>
+        <button class="reset-btn" data-reset="A">Reset</button>
+      </div>
+      <div class="device-panel">
+        <span>GPS:</span>
+        <input id="gps-lat-A" type="number" step="0.0001" value="51.5074">
+        <input id="gps-lon-A" type="number" step="0.0001" value="-0.1278">
+        <button data-gps-set="A">Set</button>
+      </div>
+      <div class="device-panel">
+        <label>Batt(mV) <input id="batt-mv-A" type="number" step="10" value="4000"></label>
+        <button data-batt-set="A">Set</button>
+        <label>Temp(&deg;C) <input id="env-temp-A" type="number" step="0.5" value="21"></label>
+        <button data-temp-set="A">Set</button>
+      </div>
+      <div class="device-panel">
+        <button data-admin-open="A">Open Admin</button>
+        <input id="admin-pw-A" type="password" value="password">
+        <button data-admin-login="A">Login</button>
       </div>
     </div>
 
@@ -124,9 +171,10 @@
       <div class="tower" id="tower">&#128225;</div>
       <div class="relay-count" id="relay-count">relayed: 0</div>
       <div class="status" id="status-R">loading...</div>
+      <button class="reset-btn" data-reset="R">Reset</button>
     </div>
 
-    <div class="device">
+    <div class="device" id="device-B" data-instance="B">
       <h2>Instance B (companion_radio)</h2>
       <canvas id="sim-canvas-B" class="sim-canvas" width="128" height="64"></canvas>
       <div class="status" id="status-B">loading...</div>
@@ -137,9 +185,30 @@
         <button data-instance="B" data-key="0xB7">&rarr;</button>
         <button data-instance="B" data-key="0xB6">&darr;</button>
         <button data-instance="B" data-key="27">Esc</button>
+        <button data-instance="B" data-key="0xF2">Prev</button>
+        <button data-instance="B" data-key="0xF1">Next</button>
+        <button class="reset-btn" data-reset="B">Reset</button>
+      </div>
+      <div class="device-panel">
+        <span>GPS:</span>
+        <input id="gps-lat-B" type="number" step="0.0001" value="40.7128">
+        <input id="gps-lon-B" type="number" step="0.0001" value="-74.0060">
+        <button data-gps-set="B">Set</button>
+      </div>
+      <div class="device-panel">
+        <label>Batt(mV) <input id="batt-mv-B" type="number" step="10" value="4000"></label>
+        <button data-batt-set="B">Set</button>
+        <label>Temp(&deg;C) <input id="env-temp-B" type="number" step="0.5" value="21"></label>
+        <button data-temp-set="B">Set</button>
+      </div>
+      <div class="device-panel">
+        <button data-admin-open="B">Open Admin</button>
+        <input id="admin-pw-B" type="password" value="password">
+        <button data-admin-login="B">Login</button>
       </div>
     </div>
   </div>
+  <div class="sub" style="margin-top:8px;">Click a device panel to focus it -- a focused panel's canvas border turns amber, and physical keyboard typing (letters/digits/Backspace/Tab-to-submit, same as the single-instance harness) goes to whichever panel is focused.</div>
 
   <div id="controls">
     <div class="ether-config">
@@ -170,6 +239,14 @@
       logEl.appendChild(line);
       logEl.scrollTop = logEl.scrollHeight;
     }
+
+    // Buttons must never grab real browser keyboard focus -- see
+    // web/index.html's comment on this same line for the full rationale
+    // (a lingering-focused Reset/Admin button gets silently re-activated by
+    // a later physical Enter/Space keypress meant for the focused device).
+    document.querySelectorAll('button').forEach((btn) => {
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
+    });
 
     const MAX_PKT = 256; // MAX_TRANS_UNIT (255) rounded up, src/MeshCore.h
 
@@ -261,6 +338,60 @@
     // UITask::handleLongPress()).
     const LONG_PRESS_MS = 1000;
 
+    // A/B/R are `let`, not `const`: Reset (see resetInstance() below)
+    // replaces one with a freshly re-instantiated module, so every other
+    // reference to "the current A" needs to go through these bindings
+    // rather than closing over a fixed object.
+    let A, B, R;
+
+    // Wait for an instance's real setup() to finish (see sim_is_ready() in
+    // examples/companion_radio/main.cpp + examples/simple_repeater/main.cpp)
+    // -- the MODULARIZE factory promise resolves once the wasm module is
+    // instantiated, well before the async IDBFS-ready callback actually
+    // invokes setup().
+    async function waitReady(inst, statusElId) {
+      for (let i = 0; i < 200; i++) {
+        if (inst.isReady()) {
+          document.getElementById(statusElId).textContent = 'ready';
+          return;
+        }
+        await new Promise(r => setTimeout(r, 50));
+      }
+      document.getElementById(statusElId).textContent = 'TIMED OUT waiting for boot';
+      log(`WARNING: instance ${inst.label} never became ready`);
+    }
+
+    function rewireEther() {
+      // Topology: A <-> R <-> B. No direct A<->B link -- see file header.
+      etherLinks = [
+        { from: A, to: [R] },
+        { from: B, to: [R] },
+        { from: R, to: [A, B] },
+      ];
+    }
+
+    // Reset: a real reset button re-runs setup() from scratch on real
+    // hardware. board.reboot() (SimMainBoard.h) just exit(0)s, which is
+    // inert under -sEXIT_RUNTIME=0 (freezes the tab instead of resetting
+    // anything -- see web/index.html's own comment on this same trap), so
+    // instead of calling into that C++ path, this re-calls the MODULARIZE
+    // factory function for just this one instance -- each call already
+    // creates a fully independent module (its own linear memory), which is
+    // exactly what "the device restarted" means here. The other two
+    // instances keep running untouched. Identity/prefs still persist
+    // (same IDBFS database, keyed by the same instance tag) -- same proof
+    // Phase 2 established for a full page reload.
+    async function resetInstance(key) {
+      log(`resetting instance ${key}...`);
+      document.getElementById('status-' + key).textContent = 'resetting...';
+      if (key === 'A') A = wrapInstance(await MeshCoreSim({ simInstanceTag: 'A' }), 'A');
+      else if (key === 'B') B = wrapInstance(await MeshCoreSim({ simInstanceTag: 'B' }), 'B');
+      else if (key === 'R') R = wrapInstance(await MeshCoreSimRepeater({ simInstanceTag: 'R' }), 'R');
+      await waitReady(key === 'A' ? A : key === 'B' ? B : R, 'status-' + key);
+      rewireEther();
+      log(`instance ${key} reset complete.`);
+    }
+
     async function main() {
       log('booting instance A (companion_radio)...');
       const modA = await MeshCoreSim({ simInstanceTag: 'A' });
@@ -269,26 +400,10 @@
       log('booting instance R (simple_repeater)...');
       const modR = await MeshCoreSimRepeater({ simInstanceTag: 'R' });
 
-      const A = wrapInstance(modA, 'A');
-      const B = wrapInstance(modB, 'B');
-      const R = wrapInstance(modR, 'R');
+      A = wrapInstance(modA, 'A');
+      B = wrapInstance(modB, 'B');
+      R = wrapInstance(modR, 'R');
 
-      // Wait for each instance's real setup() to finish (see sim_is_ready()
-      // in examples/companion_radio/main.cpp + examples/simple_repeater/main.cpp)
-      // -- the MODULARIZE factory promise resolves once the wasm module is
-      // instantiated, well before the async IDBFS-ready callback actually
-      // invokes setup().
-      async function waitReady(inst, statusElId) {
-        for (let i = 0; i < 200; i++) {
-          if (inst.isReady()) {
-            document.getElementById(statusElId).textContent = 'ready';
-            return;
-          }
-          await new Promise(r => setTimeout(r, 50));
-        }
-        document.getElementById(statusElId).textContent = 'TIMED OUT waiting for boot';
-        log(`WARNING: instance ${inst.label} never became ready`);
-      }
       await Promise.all([
         waitReady(A, 'status-A'),
         waitReady(B, 'status-B'),
@@ -296,27 +411,28 @@
       ]);
       log('all instances ready.');
 
-      // Topology: A <-> R <-> B. No direct A<->B link -- see file header.
-      etherLinks = [
-        { from: A, to: [R] },
-        { from: B, to: [R] },
-        { from: R, to: [A, B] },
-      ];
+      rewireEther();
       startEther();
       setInterval(() => pollRelay(R), 100);
 
+      // Note: A/B/R can change identity after a Reset (resetInstance()
+      // above), so this handler must resolve `inst` fresh on every
+      // pointerdown/up rather than closing over whichever object was
+      // current when the listener was attached.
+      function currentInst(key) { return key === 'A' ? A : key === 'B' ? B : R; }
+
       document.querySelectorAll('button[data-instance]').forEach((btn) => {
-        const inst = btn.dataset.instance === 'A' ? A : B;
+        const key = btn.dataset.instance;
         const code = Number(btn.dataset.key);
         let timer = null, longFired = false;
         btn.addEventListener('pointerdown', (e) => {
           e.preventDefault();
           longFired = false;
-          timer = setTimeout(() => { longFired = true; sendKeyLongPress(inst, code); }, LONG_PRESS_MS);
+          timer = setTimeout(() => { longFired = true; sendKeyLongPress(currentInst(key), code); }, LONG_PRESS_MS);
         });
         btn.addEventListener('pointerup', () => {
           if (timer) { clearTimeout(timer); timer = null; }
-          if (!longFired) sendKey(inst, code);
+          if (!longFired) sendKey(currentInst(key), code);
         });
         const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
         btn.addEventListener('pointerleave', cancel);
@@ -382,7 +498,132 @@
         log('=== demo sequence complete ===');
       });
 
-      window.__meshSim = { A, B, R }; // exposed for console poking / Playwright
+      // Reset buttons -- see resetInstance() above for why this re-calls
+      // the MODULARIZE factory instead of going through board.reboot().
+      document.querySelectorAll('button[data-reset]').forEach((btn) => {
+        btn.addEventListener('click', () => { resetInstance(btn.dataset.reset); });
+      });
+
+      // GPS/battery/temperature: same already-exported functions as the
+      // single-instance harness (sim_location_set, sim_battery_set_mv,
+      // sim_env_temperature_set -- see SimLocationProvider.h/SimMainBoard.h/
+      // SimSensorManager.h), called against whichever instance's own
+      // module the button belongs to.
+      document.querySelectorAll('button[data-gps-set]').forEach((btn) => {
+        const key = btn.dataset.gpsSet;
+        btn.addEventListener('click', () => {
+          const lat = parseFloat(document.getElementById('gps-lat-' + key).value) || 0;
+          const lon = parseFloat(document.getElementById('gps-lon-' + key).value) || 0;
+          currentInst(key).mod.ccall('sim_location_set', null, ['number','number','number'], [lat, lon, 0]);
+          log(`${key}: GPS set to ${lat}, ${lon}`);
+        });
+      });
+      document.querySelectorAll('button[data-batt-set]').forEach((btn) => {
+        const key = btn.dataset.battSet;
+        btn.addEventListener('click', () => {
+          const mv = parseInt(document.getElementById('batt-mv-' + key).value, 10) || 0;
+          currentInst(key).mod.ccall('sim_battery_set_mv', null, ['number'], [mv]);
+          log(`${key}: battery set to ${mv}mV`);
+        });
+      });
+      document.querySelectorAll('button[data-temp-set]').forEach((btn) => {
+        const key = btn.dataset.tempSet;
+        btn.addEventListener('click', () => {
+          const c = parseFloat(document.getElementById('env-temp-' + key).value) || 0;
+          currentInst(key).mod.ccall('sim_env_temperature_set', null, ['number'], [c]);
+          log(`${key}: env temperature set to ${c}C`);
+        });
+      });
+
+      // Admin/repeater login: opens the real AdminScreen for the first
+      // known repeater/room contact and submits a login via the real
+      // sendRoomLogin() (see the sim_test_open_admin_with_first_repeater()/
+      // sim_test_login_first_repeater() hooks in
+      // examples/companion_radio/main.cpp). R is a simple_repeater, so once
+      // A/B have discovered it as a contact (e.g. via "Send Advert" +
+      // relay), this should find it. Default password "password" matches
+      // the sim repeater's un-overridden ADMIN_PASSWORD default.
+      document.querySelectorAll('button[data-admin-open]').forEach((btn) => {
+        const key = btn.dataset.adminOpen;
+        btn.addEventListener('click', () => {
+          const ok = currentInst(key).mod.ccall('sim_test_open_admin_with_first_repeater', 'number', [], []);
+          log(`${key}: opened AdminScreen (ok=${ok})`);
+        });
+      });
+      document.querySelectorAll('button[data-admin-login]').forEach((btn) => {
+        const key = btn.dataset.adminLogin;
+        btn.addEventListener('click', () => {
+          const pw = document.getElementById('admin-pw-' + key).value;
+          const result = currentInst(key).mod.ccall('sim_test_login_first_repeater', 'number', ['string'], [pw]);
+          log(`${key}: login request result=${result} (1=sent,0=send failed,-1=no contact yet)`);
+        });
+      });
+
+      // Click-to-focus: physical keyboard typing (letters/digits/Backspace/
+      // Tab-to-submit, same mapping as the single-instance harness) goes to
+      // whichever device panel was last clicked, shown by an amber canvas
+      // border. Defaults to A.
+      let focusedKey = 'A';
+      function setFocus(key) {
+        focusedKey = key;
+        document.querySelectorAll('.device').forEach((el) => {
+          el.classList.toggle('focused', el.dataset.instance === key);
+        });
+      }
+      document.querySelectorAll('.device').forEach((el) => {
+        el.addEventListener('click', () => setFocus(el.dataset.instance));
+      });
+      setFocus('A');
+
+      // Same KEYMAP/resolveKey/press-and-hold logic as web/index.html --
+      // see that file's comment for the full rationale (full printable-
+      // ASCII passthrough, Tab->KEY_KB_ENTER, Backspace is a real
+      // backspace not Cancel, WASD/space-as-Enter removed). Routes to
+      // whichever instance is currently focused instead of a single fixed
+      // module.
+      // NOTE: no 'n'/'p' Next/Prev shortcuts (see web/index.html's comment --
+      // they collided with typing the literal letters 'n'/'p'). The
+      // on-screen Next(n)/Prev(p) buttons still work via click.
+      const KEYMAP = {
+        ArrowUp: 0xB5, ArrowDown: 0xB6, ArrowLeft: 0xB4, ArrowRight: 0xB7,
+        Enter: 13, Escape: 27, Backspace: 0x08, Tab: 0x05,
+      };
+      function resolveKey(e) {
+        if (e.key in KEYMAP) return KEYMAP[e.key];
+        if (e.key.length === 1) {
+          const c = e.key.charCodeAt(0);
+          if (c >= 0x20 && c <= 0x7E) return c;
+        }
+        return null;
+      }
+      function focusedOnRealInput() {
+        const el = document.activeElement;
+        return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+      }
+      const keyHold = new Map();
+      window.addEventListener('keydown', (e) => {
+        if (focusedOnRealInput()) return;
+        const code = resolveKey(e);
+        if (code === null) return;
+        e.preventDefault();
+        if (keyHold.has(e.key)) return;
+        const state = { longFired: false };
+        state.timer = setTimeout(() => { state.longFired = true; sendKeyLongPress(currentInst(focusedKey), code); }, LONG_PRESS_MS);
+        keyHold.set(e.key, state);
+      });
+      window.addEventListener('keyup', (e) => {
+        if (focusedOnRealInput()) return;
+        const state = keyHold.get(e.key);
+        if (!state) return;
+        clearTimeout(state.timer);
+        if (!state.longFired) sendKey(currentInst(focusedKey), resolveKey(e));
+        keyHold.delete(e.key);
+      });
+
+      Object.defineProperty(window, '__meshSim', {
+        get: () => ({ A, B, R }), configurable: true,
+      }); // exposed for console poking / Playwright -- a live getter since
+          // A/B/R can be replaced by resetInstance() after this runs.
     }
 
     main().catch((err) => {

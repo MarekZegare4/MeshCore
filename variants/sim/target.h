@@ -11,6 +11,13 @@
 #include "SimMainBoard.h"
 #include "SimRTCClock.h"
 #include <helpers/SensorManager.h>
+// SimSensorManager.h before SimLocationProvider.h, deliberately: the
+// `sensors` global's real type is SimSensorManager (defined in
+// target.cpp), and SimLocationProvider.h's own `extern SimSensorManager
+// sensors;` declaration (see that file's comment) needs the complete type
+// already visible -- C++ requires every declaration of the same global to
+// agree on its exact type, not just something covariant/compatible.
+#include "SimSensorManager.h"
 // Included here (rather than only where it's used) so its JS-facing
 // sim_location_set() EMSCRIPTEN_KEEPALIVE export actually gets compiled
 // into every SIM_PLATFORM target that includes target.h (companion_radio
@@ -25,7 +32,7 @@
 extern SimMainBoard board;
 extern SimRadio radio_driver;
 extern SimRTCClock rtc_clock;
-extern SensorManager sensors;
+extern SimSensorManager sensors;
 
 #ifdef DISPLAY_CLASS
   extern DISPLAY_CLASS display;
