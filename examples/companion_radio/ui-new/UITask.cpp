@@ -50,7 +50,14 @@
   #define UI_RECENT_LIST_SIZE 4
 #endif
 
-#if UI_HAS_JOYSTICK
+// The sim's D-pad + dedicated OK/Enter key behaves like a joystick board
+// (a short Enter press opens Settings/Tools/Messages -- see the
+// KEY_ENTER && _page==... handlers below; holding it separately reaches
+// KEY_CONTEXT_MENU via handleLongPress(), same as a real joystick board's
+// long-press) -- without SIM_PLATFORM here, this would fall to the
+// touchscreen-board wording below, which describes a different, and for
+// this input method simply wrong, interaction.
+#if UI_HAS_JOYSTICK || defined(SIM_PLATFORM)
   #define PRESS_LABEL "press Enter"
 #else
   #define PRESS_LABEL "long press"

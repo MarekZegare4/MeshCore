@@ -196,6 +196,7 @@ class SimDisplayDriverCanvas : public DisplayDriver {
   bool _on = false;
   int _cursor_x = 0, _cursor_y = 0;
   Color _color = LIGHT;
+  int _text_sz = 1;
 
 public:
   SimDisplayDriverCanvas() : DisplayDriver(128, 64) { }
@@ -234,9 +235,20 @@ public:
     });
   }
 
-  void setTextSize(int sz) override { /* one fixed size, like the native ASCII backend */ }
+  void setTextSize(int sz) override { _text_sz = sz; }
   void setColor(Color c) override { _color = c; }
   void setCursor(int x, int y) override { _cursor_x = x; _cursor_y = y; }
+
+  // MiscFixed's real metrics (6px advance, 9px row height -- see
+  // src/helpers/ui/MiscFixedFont.h), scaled by the current text size, same
+  // as a real board's SSD1306Display::getCharWidth()/getLineHeight() do.
+  // DisplayDriver.h's own defaults (6/8, unscaled) would make the Clock
+  // screen's setTextSize(2)/(4) big-digit layout math (drawBig()'s width
+  // centring, line spacing) come out wrong -- half-size digits crowded on
+  // top of each other -- even though print() itself renders them at the
+  // right size once _text_sz reaches it (see target.cpp).
+  int getCharWidth() const override { return 6 * _text_sz; }
+  int getLineHeight() const override { return 9 * _text_sz; }
 
   // Amber-on-black palette (a common OLED look) for LIGHT/DARK; the other
   // Color enumerators (RED/GREEN/BLUE/YELLOW/ORANGE) aren't used on the real

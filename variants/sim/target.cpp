@@ -69,8 +69,11 @@ void SimDisplayDriverCanvas::print(const char* str) {
   gfx.setCursor(_cursor_x, _cursor_y);
   // color arg is just our own internal "lit" marker (1) -- the real on-screen
   // amber/black choice is applied once at blit time below, from _color, same
-  // as every other primitive in this class.
-  miscFixedPrint(gfx, str, 1, 1);
+  // as every other primitive in this class. sz is the real current text
+  // size (set via setTextSize(), e.g. the Clock screen's big digits) --
+  // miscFixedPrint()/miscFixedDrawGlyph() scale both the glyph pixels and
+  // the advance width by it already.
+  miscFixedPrint(gfx, str, _text_sz, 1);
 
   // startFrame() already blanks the whole canvas to black every frame, so
   // only the lit pixels need drawing here -- unlit buffer cells are already
