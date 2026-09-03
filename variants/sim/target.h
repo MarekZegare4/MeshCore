@@ -11,6 +11,12 @@
 #include "SimMainBoard.h"
 #include "SimRTCClock.h"
 #include <helpers/SensorManager.h>
+// Included here (rather than only where it's used) so its JS-facing
+// sim_location_set() EMSCRIPTEN_KEEPALIVE export actually gets compiled
+// into every SIM_PLATFORM target that includes target.h (companion_radio
+// AND simple_repeater) -- an inline function nobody #includes never gets
+// emitted at all, KEEPALIVE or not.
+#include "SimLocationProvider.h"
 
 #ifdef DISPLAY_CLASS
   #include "SimDisplayDriver.h"

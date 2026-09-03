@@ -48,13 +48,23 @@ extern "C" EMSCRIPTEN_KEEPALIVE void sim_idbfs_ready() {
   emscripten_set_main_loop(sim_main_loop_tick, 0, 1);
 }
 
+// The app-level SimFS root to mount IDBFS at -- must match whatever
+// relative "./sim_data..." path that app's own main.cpp constructs its
+// SimFS with (see the long comment on sim_fs_mount_idbfs() in SimFS.h for
+// why those are the same filesystem node under Emscripten's default cwd,
+// "/"). Defaults to companion_radio's root, unchanged from Phase 2 --
+// Phase 3's simple_repeater build (variants/sim/build_wasm_repeater.sh)
+// overrides this via -DSIM_FS_ROOT so its identity storage lands under a
+// DIFFERENT IDBFS-backed root than a companion instance's, same reasoning
+// as examples/simple_repeater/main.cpp's SIM_PLATFORM branch using
+// "./sim_data_repeater" instead of "./sim_data" for its SimFS.
+#ifndef SIM_FS_ROOT
+#define SIM_FS_ROOT "/sim_data"
+#endif
+
 int main() {
-  printf("MeshCore sim (wasm) starting -- mounting IDBFS at /sim_data...\n");
-  // "/sim_data" must match the relative "./sim_data" DataStore store(sim_fs,
-  // ...) in examples/companion_radio/main.cpp resolves to -- see the long
-  // comment on sim_fs_mount_idbfs() in SimFS.h for why those are the same
-  // filesystem node under Emscripten's default cwd ("/").
-  sim_fs_mount_idbfs("/sim_data");
+  printf("MeshCore sim (wasm) starting -- mounting IDBFS at " SIM_FS_ROOT "...\n");
+  sim_fs_mount_idbfs(SIM_FS_ROOT);
   // Keep the runtime alive after main() returns instead of tearing it down
   // (the default for a `main()` that returns under Emscripten) -- the real
   // boot sequence hasn't happened yet, it's waiting on sim_idbfs_ready()

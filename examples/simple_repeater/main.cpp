@@ -22,6 +22,34 @@ void halt() {
   while (1) ;
 }
 
+#if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+// Phase 3 sim ether: a JS-visible "did this repeater just relay a packet"
+// hook. MyMesh (src/Mesh.h's Mesh base class) already keeps an exact count
+// of packets actually re-transmitted in the repeater/transport role --
+// n_forwarded, incremented at the real ACTION_RETRANSMIT decision points in
+// src/Mesh.cpp (routeRecvPacket()) and decremented in onRetransmitCancelled()
+// if an overhear cancels a queued retransmit before it goes out -- and
+// already exposes it publicly as getNumForwarded() (the same number
+// DiagnosticsScreen.h prints on a real companion_radio's screen). Rather
+// than re-deriving "was this a relay" from TX/RX byte timing (fragile,
+// and duplicates logic the real Mesh class already gets right, including
+// the overhear-cancellation edge case), this just exports that exact
+// counter for JS to poll and diff on its own ether tick -- zero changes
+// to any shared/platform-agnostic src/ file.
+extern "C" EMSCRIPTEN_KEEPALIVE uint32_t sim_repeater_get_relay_count() {
+  return the_mesh.getNumForwarded();
+}
+
+// Same "has setup() actually finished" readiness flag as
+// examples/companion_radio/main.cpp -- see that file's comment for why
+// this is needed instead of a fixed post-ready delay.
+static bool g_sim_ready = false;
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_is_ready() {
+  return g_sim_ready ? 1 : 0;
+}
+#endif
+
 static char command[160];
 #ifdef ETHERNET_ENABLED
 static char ethernet_command[160];
@@ -37,7 +65,14 @@ static unsigned long userBtnDownAt = 0;
 
 void setup() {
   Serial.begin(115200);
+#ifndef SIM_PLATFORM
+  // Skip this one-shot boot pause in the sim: under Emscripten it would
+  // synchronously block the browser's single JS thread for a full second
+  // (Arduino.h's sim delay() is a real std::this_thread::sleep_for(), and
+  // this runs before emscripten_set_main_loop ever hands control back) --
+  // harmless on a real board's own thread, unnecessary UX friction here.
   delay(1000);
+#endif
 
   board.begin();
 
@@ -81,6 +116,19 @@ void setup() {
   fs = &LittleFS;
   IdentityStore store(LittleFS, "/identity");
   store.begin();
+#elif defined(SIM_PLATFORM)
+  // Real files under ./sim_data_repeater/ (relative to the process's cwd,
+  // native; or the Emscripten virtual FS, wasm) -- deliberately a DIFFERENT
+  // root than examples/companion_radio/main.cpp's "./sim_data" so a
+  // repeater instance's identity can never collide with a companion
+  // instance's, even if both happened to run from the same cwd (native) or
+  // the same page (wasm, see variants/sim/sim_main.cpp's SIM_FS_ROOT).
+  // "static" (not a plain local) so sim_fs outlives setup() -- IdentityStore
+  // only stores a pointer to it, same reasoning as the ui_task static above.
+  static SimFS sim_fs("./sim_data_repeater");
+  fs = &sim_fs;
+  IdentityStore store(sim_fs, "/identity");
+  store.begin();
 #else
   #error "need to define filesystem"
 #endif
@@ -120,6 +168,9 @@ void setup() {
 #endif
 
   board.onBootComplete();
+#if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+  g_sim_ready = true;
+#endif
 }
 
 void loop() {

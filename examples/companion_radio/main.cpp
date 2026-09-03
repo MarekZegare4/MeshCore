@@ -2,6 +2,19 @@
 #include <Mesh.h>
 #include "MyMesh.h"
 
+#if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+// Phase 3: true only once setup() has fully finished (set at the very end
+// of setup(), below) -- lets a JS test harness poll "has this instance
+// actually booted" instead of guessing a fixed delay after the MODULARIZE
+// factory promise resolves, which resolves once the wasm module is
+// instantiated, well before sim_idbfs_ready()'s async IDBFS callback ever
+// invokes setup() (see variants/sim/sim_main.cpp). Calling any of the other
+// sim_test_*() hooks below before this is true would run against a
+// the_mesh that exists (global C++ construction already ran) but hasn't
+// had begin()/an identity loaded yet.
+static bool g_sim_ready = false;
+#endif
+
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
   uint32_t n = 0;
@@ -289,6 +302,9 @@ void setup() {
   NRF_WDT->TASKS_START = 1;
 #endif
   board.onBootComplete();
+#if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+  g_sim_ready = true;
+#endif
 }
 
 void loop() {
@@ -323,3 +339,87 @@ void loop() {
   }
 #endif
 }
+
+#if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+// Phase 3 sim test hooks -- a browser test harness (no real phone app, no
+// on-device keyboard-driven compose flow in this sim yet) needs SOME way
+// to trigger "send a flood advert" / "send a DM" from JS. Every one of
+// these calls straight into the exact same real BaseChatMesh/MyMesh
+// functions the real phone-app serial protocol (CMD_SEND_SELF_ADVERT,
+// CMD_SEND_TXT_MSG in this same file) or the on-device UI compose flow
+// (MessagesScreen::afterSend) already use -- real crypto, real routing,
+// real contact table, nothing about the mesh/message logic is faked here,
+// only "what UI gesture triggers it" is short-circuited. See the Phase 3
+// report for why: scripting the on-device virtual keyboard widget
+// key-by-key to compose free text was judged not worth the fragility for
+// an automated test, versus this ~20-line, obviously-inert-on-real-hardware
+// addition.
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_is_ready() {
+  return g_sim_ready ? 1 : 0;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_advert_flood() {
+  if (!g_sim_ready) return 0;
+  return the_mesh.advertFlood() ? 1 : 0;
+}
+
+// getContactByIdx(idx, ...) indexes DIRECTLY into the raw contacts[] array
+// (src/helpers/BaseChatMesh.cpp) with NO offset applied -- getNumContacts()
+// only SUBTRACTS MAX_ANON_CONTACTS from the count to hide the reserved
+// anon-request slots at the front of that array, it doesn't shift where
+// index 0 points. The real UI/CLI code never hits this because it always
+// walks contacts via startContactsIterator() (BaseChatMesh.cpp), which
+// already begins at MAX_ANON_CONTACTS -- this small helper mirrors that
+// same offset for these test-only hooks instead of duplicating an iterator.
+static bool findFirstChatContact(ContactInfo& out) {
+  int n = the_mesh.getNumContacts();
+  for (int i = 0; i < n; i++) {
+    ContactInfo ci;
+    if (the_mesh.getContactByIdx(MAX_ANON_CONTACTS + i, ci) && ci.type == ADV_TYPE_CHAT) {
+      out = ci;
+      return true;
+    }
+  }
+  return false;
+}
+
+// Finds the first known contact of type ADV_TYPE_CHAT (i.e. another
+// companion_radio instance, not a repeater/room) and sends it a real DM via
+// BaseChatMesh::sendMessage() -- the exact function CMD_SEND_TXT_MSG calls.
+// Returns MSG_SEND_SENT_FLOOD/MSG_SEND_SENT_DIRECT/MSG_SEND_FAILED (see
+// src/helpers/BaseChatMesh.h), or -1 if no chat contact is known yet.
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_send_msg_to_first_contact(const char* text) {
+  if (!g_sim_ready) return -1;
+  ContactInfo ci;
+  if (!findFirstChatContact(ci)) return -1;
+  uint32_t expected_ack, est_timeout;
+  uint32_t ts = rtc_clock.getCurrentTimeUnique();
+  return the_mesh.sendMessage(ci, ts, 0, text, expected_ack, est_timeout);
+}
+
+// How many contacts this instance has discovered so far (any type) -- lets
+// the JS ether-tick loop poll "has advert propagation finished yet" without
+// guessing a fixed timeout.
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_get_num_contacts() {
+  return the_mesh.getNumContacts();
+}
+
+#ifdef DISPLAY_CLASS
+// Jumps the on-device UI straight to the DM thread with the first known
+// ADV_TYPE_CHAT contact (UITask::openContactDM() -- the exact same real
+// function NearbyScreen's contact-list "select" action calls) so a test
+// harness can screenshot the canvas and see the actual received message
+// text, rendered by the real MessagesScreen/DisplayDriver code, without
+// having to script the on-device contact-list navigation key-by-key.
+// Returns 1 if a chat contact was found and the screen switched, 0 if not
+// (e.g. advert propagation hasn't reached this instance yet).
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_open_dm_with_first_contact() {
+  if (!g_sim_ready) return 0;
+  ContactInfo ci;
+  if (!findFirstChatContact(ci)) return 0;
+  ui_task.openContactDM(ci);
+  return 1;
+}
+#endif
+#endif

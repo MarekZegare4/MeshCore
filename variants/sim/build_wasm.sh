@@ -167,6 +167,18 @@ done
 # Module.FS.readFile('/sim_data/identity/_main.id') -- to prove IDBFS
 # persistence with a real file-content comparison across a reload, not just
 # "the app didn't crash". Not required for the app itself.
+#
+# EXPORTED_FUNCTIONS=_main,_malloc,_free (Phase 3 addition): every
+# EMSCRIPTEN_KEEPALIVE-attributed function (all the sim_*() hooks across
+# variants/sim/ and examples/companion_radio/) is exported regardless of
+# this list -- that's what the attribute is FOR -- so this only adds
+# malloc()/free() themselves, needed by web/mesh.html's JS "ether" to
+# allocate a scratch buffer per instance for sim_radio_poll_tx()/
+# sim_radio_inject_rx() (see variants/sim/SimRadio.h). Without this,
+# Module._malloc() would abort at runtime with "malloc() called but not
+# included in the build" -- confirmed by hitting exactly that during Phase
+# 3. Purely additive: nothing Phase 2's web/index.html already does
+# (sim_enqueue_key() with a plain number, no buffer marshaling) is affected.
 "$EMXX" \
   "${OBJS[@]}" \
   -lidbfs.js \
@@ -176,7 +188,8 @@ done
   -sEXPORT_NAME=MeshCoreSim \
   -sENVIRONMENT=web \
   -sEXIT_RUNTIME=0 \
-  -sEXPORTED_RUNTIME_METHODS=FS,ccall,cwrap \
+  -sEXPORTED_RUNTIME_METHODS=FS,ccall,cwrap,HEAPU8 \
+  -sEXPORTED_FUNCTIONS=_main,_malloc,_free \
   -o "$OUT_DIR/meshcore_sim.js"
 
 echo ""

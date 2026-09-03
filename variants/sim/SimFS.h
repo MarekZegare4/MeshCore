@@ -283,14 +283,45 @@ public:
 // main() before sim_idbfs_ready() ever ran -- so this needs its own
 // try/catch, unlike Emscripten's own test (which never pre-creates the dir
 // through a second path first).
+// Phase 3 addendum: when two module instances mount IDBFS at the exact same
+// path (both companion_radio instances always do -- SimFS's own root is a
+// hardcoded literal, "./sim_data", chosen once at static-init time long
+// before any JS-supplied per-instance config is reachable -- see
+// SimInstance.h's header comment for why runtime differentiation had to
+// happen at a different layer), they'd naively share ONE real IndexedDB
+// database: this SDK's IDBFS (src/lib/libidbfs.js, IDBFS.getDB) keys the
+// actual browser-level database by the mount path string ITSELF, with no
+// mount-option override for that. Since both instances run in the same
+// browser tab (same origin), that's a real collision, not a hypothetical
+// one -- confirmed by reading the vendored emsdk's own libidbfs.js during
+// this phase.
+//
+// Fix: monkey-patch IDBFS.getDB (only when the host page opted in via
+// Module['simInstanceTag'], e.g. MeshCoreSim({simInstanceTag: 'A'})) so the
+// REAL database name gets the tag appended, while the mount PATH stays
+// "/sim_data" for every instance -- it has to, since that's the exact path
+// SimFS's own fopen()-shaped calls resolve to, and only files actually
+// living under the mounted path get persisted at all. This only touches
+// this module instance's own IDBFS global (each MeshCoreSim() call has its
+// own independent copy, per MODULARIZE), never the vendored emsdk source
+// itself. Untagged instances (Module['simInstanceTag'] unset, e.g. the
+// original Phase 2 single-instance web/index.html harness) get IDBFS.getDB
+// completely unpatched -- byte-for-byte the pre-Phase-3 behavior.
 inline void sim_fs_mount_idbfs(const char* root) {
   EM_ASM({
     var root = UTF8ToString($0);
+    var tag = (typeof Module !== 'undefined' && Module['simInstanceTag']) ? Module['simInstanceTag'] : '';
+    if (tag) {
+      var origGetDB = IDBFS.getDB;
+      IDBFS.getDB = function(name, callback) {
+        return origGetDB.call(IDBFS, name + '#' + tag, callback);
+      };
+    }
     try { FS.mkdir(root); } catch (e) { /* already exists -- see comment above */ }
     FS.mount(IDBFS, { autoPersist: true }, root);
     FS.syncfs(true, function(err) {
       if (err) console.error('[sim] IDBFS initial syncfs(true) failed:', err);
-      else console.log('[sim] IDBFS pull from IndexedDB complete, booting app...');
+      else console.log('[sim] IDBFS pull from IndexedDB complete, booting app...' + (tag ? (' (instance ' + tag + ')') : ''));
       _sim_idbfs_ready();
     });
   }, root);

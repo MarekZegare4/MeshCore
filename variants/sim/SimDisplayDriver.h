@@ -167,8 +167,31 @@ private:
 //
 // Each call reaches into the DOM via EM_ASM (synchronous, main-thread JS --
 // fine since this build has no pthreads/proxying). The canvas is looked up
-// by id once in begin() and cached on a JS global (window.__simCtx) so every
-// later call is one property read, not a fresh getElementById().
+// by id once in begin() and cached on a per-instance JS property (see below)
+// so every later call is one property read, not a fresh getElementById().
+//
+// Phase 3 addendum: cached on Module.__simCtx, NOT window.__simCtx as this
+// class originally did in Phase 2. Phase 2 only ever ran one instance on a
+// page, so a plain `window` global was invisible/harmless as a design smell;
+// Phase 3 loads multiple MeshCoreSim()/MeshCoreSimRepeater() instances on
+// ONE page, and `window` is the single real browser global shared by every
+// one of them (MODULARIZE isolates each instance's own Module/wasm linear
+// memory, but NOT the DOM/window) -- two instances' begin() calls would
+// stomp the same window.__simCtx in turn, and both would end up drawing
+// through whichever one won. `Module` itself, by contrast, IS a distinct
+// object per instance (that's the whole point of MODULARIZE) and is already
+// reachable from inside EM_ASM here as the current instance's own Module
+// (same access pattern SimFS.h's sim_fs_mount_idbfs()/SimInstance.h's
+// sim_instance_salt() already rely on for Module['simInstanceTag']), so
+// storing it there instead scopes it correctly per instance for free.
+//
+// The canvas element id is ALSO made per-instance the same way: an untagged
+// instance (no Module['simInstanceTag'], e.g. Phase 2's original
+// single-instance web/index.html harness) still looks for plain
+// "sim-canvas", byte-for-byte the pre-Phase-3 behavior; a tagged instance
+// (Module['simInstanceTag'] = 'A', from a Phase 3 multi-instance host page
+// like web/mesh.html) looks for "sim-canvas-A" instead, so two instances on
+// one page never fight over the same <canvas> element either.
 class SimDisplayDriverCanvas : public DisplayDriver {
   bool _on = false;
   int _cursor_x = 0, _cursor_y = 0;
@@ -180,10 +203,12 @@ public:
   bool begin() {
     _on = true;
     EM_ASM({
-      var c = document.getElementById('sim-canvas');
-      if (!c) { console.error('[sim] #sim-canvas not found in the host page'); return; }
-      window.__simCtx = c.getContext('2d');
-      window.__simCtx.imageSmoothingEnabled = false;
+      var tag = (typeof Module !== 'undefined' && Module['simInstanceTag']) ? Module['simInstanceTag'] : '';
+      var id = tag ? ('sim-canvas-' + tag) : 'sim-canvas';
+      var c = document.getElementById(id);
+      if (!c) { console.error('[sim] #' + id + ' not found in the host page'); return; }
+      Module.__simCtx = c.getContext('2d');
+      Module.__simCtx.imageSmoothingEnabled = false;
     });
     return true;
   }
@@ -193,9 +218,9 @@ public:
   void turnOff() override {
     _on = false;
     EM_ASM({
-      if (!window.__simCtx) return;
-      window.__simCtx.fillStyle = '#000';
-      window.__simCtx.fillRect(0, 0, 128, 64);
+      if (!Module.__simCtx) return;
+      Module.__simCtx.fillStyle = '#000';
+      Module.__simCtx.fillRect(0, 0, 128, 64);
     });
   }
   void clear() override { turnOff(); _on = true; }
@@ -203,9 +228,9 @@ public:
   void startFrame(Color bkg = DARK) override {
     _color = LIGHT;
     EM_ASM({
-      if (!window.__simCtx) return;
-      window.__simCtx.fillStyle = '#000';
-      window.__simCtx.fillRect(0, 0, 128, 64);
+      if (!Module.__simCtx) return;
+      Module.__simCtx.fillStyle = '#000';
+      Module.__simCtx.fillRect(0, 0, 128, 64);
     });
   }
 
@@ -222,8 +247,8 @@ public:
   void print(const char* str) override {
     if (!str) return;
     EM_ASM({
-      if (!window.__simCtx) return;
-      var ctx = window.__simCtx;
+      if (!Module.__simCtx) return;
+      var ctx = Module.__simCtx;
       ctx.fillStyle = UTF8ToString($3) === 'L' ? '#ffb000' : '#000';
       ctx.font = '8px monospace';
       ctx.textBaseline = 'top';
@@ -248,16 +273,16 @@ public:
 
   void fillRect(int x, int y, int w, int h) override {
     EM_ASM({
-      if (!window.__simCtx) return;
-      window.__simCtx.fillStyle = UTF8ToString($4) === 'L' ? '#ffb000' : '#000';
-      window.__simCtx.fillRect($0, $1, $2, $3);
+      if (!Module.__simCtx) return;
+      Module.__simCtx.fillStyle = UTF8ToString($4) === 'L' ? '#ffb000' : '#000';
+      Module.__simCtx.fillRect($0, $1, $2, $3);
     }, x, y, w, h, (_color != DARK) ? "L" : "D");
   }
 
   void drawRect(int x, int y, int w, int h) override {
     EM_ASM({
-      if (!window.__simCtx) return;
-      var ctx = window.__simCtx;
+      if (!Module.__simCtx) return;
+      var ctx = Module.__simCtx;
       ctx.strokeStyle = UTF8ToString($4) === 'L' ? '#ffb000' : '#000';
       ctx.lineWidth = 1;
       ctx.strokeRect($0 + 0.5, $1 + 0.5, $2 - 1, $3 - 1);
@@ -274,8 +299,8 @@ public:
   // a plain integer and the JS side indexes HEAPU8 with it directly.
   void drawXbm(int x, int y, const uint8_t* bits, int w, int h) override {
     EM_ASM({
-      if (!window.__simCtx) return;
-      var ctx = window.__simCtx;
+      if (!Module.__simCtx) return;
+      var ctx = Module.__simCtx;
       var x0 = $0;
       var y0 = $1;
       var w = $2;

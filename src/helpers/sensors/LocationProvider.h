@@ -22,7 +22,18 @@ public:
     virtual long getHDOP() { return -1; }
     virtual bool isValid() = 0;
     virtual long getTimestamp() = 0;
-    virtual void sendSentence(const char * sentence);
+    // Default no-op body (every existing subclass overrides this anyway --
+    // MicroNMEALocationProvider.h forwards to the NMEA lib,
+    // EnvironmentSensorManager.cpp's GPS classes no-op it explicitly) --
+    // previously declared with NO definition anywhere in the codebase
+    // (confirmed by repo-wide grep), which is latently a hard link error
+    // ("undefined symbol: typeinfo for LocationProvider") for ANY subclass
+    // that doesn't override it, since base-subobject construction of any
+    // LocationProvider-derived object needs this class's own vtable/RTTI to
+    // exist as a real linkable symbol. Surfaced by variants/sim's
+    // SimLocationProvider (Phase 3 of the sim plan) being the first
+    // consumer to construct one outside of code that always overrides it.
+    virtual void sendSentence(const char * sentence) { }
     virtual void reset() = 0;
     virtual void begin() = 0;
     virtual void stop() = 0;
