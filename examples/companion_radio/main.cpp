@@ -359,6 +359,27 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sim_is_ready() {
   return g_sim_ready ? 1 : 0;
 }
 
+// A host page's "Reset" control (meshcore-solo-site's RESET button,
+// mesh.html's own Reset buttons) re-invokes the MODULARIZE factory
+// function for the same simInstanceTag to simulate a real device restart
+// -- board.reboot() is inert here (exit()s the whole wasm process, which
+// under -sEXIT_RUNTIME=0 just freezes the tab). That leaves the OLD
+// Module instance's own emscripten_set_main_loop() callback (see
+// sim_main.cpp's sim_idbfs_ready()) still registered and still ticking
+// forever afterwards -- nothing ever tore it down. Two real, user-visible
+// consequences: it keeps re-drawing onto the same simInstanceTag-keyed
+// <canvas> element the NEW instance is also drawing onto (visible as
+// flicker/reversion once more than one reset has piled up orphaned
+// instances), and if the old instance had been sitting on the Shutdown
+// screen, HomeScreen::poll() keeps re-firing shutdown() -> turnOff() on
+// every tick, permanently blacking that canvas out from under the new
+// instance. A host page should call this on the OLD Module reference
+// right before discarding it (i.e. right before re-invoking the
+// MODULARIZE factory for that same tag) to actually stop it.
+extern "C" EMSCRIPTEN_KEEPALIVE void sim_stop_main_loop() {
+  emscripten_cancel_main_loop();
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_advert_flood() {
   if (!g_sim_ready) return 0;
   return the_mesh.advertFlood() ? 1 : 0;
