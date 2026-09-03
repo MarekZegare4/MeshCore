@@ -136,6 +136,17 @@ DEFINES=(
   -DFIRMWARE_SOLO_BUILD=1
   -DMAX_CONTACTS=100
   -DMAX_GROUP_CHANNELS=8
+  # Both off by default on every real board variant except the GPS/sensor-
+  # carrying ones (see variants/wio-tracker-l1/platformio.ini,
+  # variants/heltec_t114/platformio.ini etc.) -- without ENV_INCLUDE_GPS,
+  # HomeScreen's GPS enum entry (ui-new/UITask.cpp) doesn't even exist in
+  # the build, so the "GPS" home page from sim_test_show_all_home_pages'
+  # mask=0 has nothing to map to. The demo site wants both on: SimSensorManager
+  # already feeds a real (JS-settable) GPS fix and one temperature/battery
+  # channel (see SimSensorManager.h) -- these two flags are what actually
+  # surface them as on-device pages.
+  -DENV_INCLUDE_GPS=1
+  -DUI_SENSORS_PAGE=1
 )
 
 # -funsigned-char: carried over from Phase 1 verbatim -- real ARM cores

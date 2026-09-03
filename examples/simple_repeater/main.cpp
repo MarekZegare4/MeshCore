@@ -48,6 +48,22 @@ static bool g_sim_ready = false;
 extern "C" EMSCRIPTEN_KEEPALIVE int sim_is_ready() {
   return g_sim_ready ? 1 : 0;
 }
+
+// Same idea as companion_radio's sim_test_advert_flood() -- MyMesh's own
+// updateAdvertTimer() (called once from begin()) doesn't fire the repeater's
+// first self-advert for a full 2 minutes (advert_interval defaults to 1,
+// scaled *2*60*1000ms -- see MyMesh::updateAdvertTimer()/begin() in this
+// same MyMesh.cpp), so a host page that wants hero/B to discover the
+// repeater as a contact immediately on boot (rather than waiting out that
+// timer) needs some way to trigger it early. sendSelfAdvertisement(0, true)
+// is the exact same call updateAdvertTimer()'s scheduled path eventually
+// makes, just invoked now instead of on a timer -- real crypto, real
+// packet, nothing faked.
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_advert_flood() {
+  if (!g_sim_ready) return 0;
+  the_mesh.sendSelfAdvertisement(0, true);
+  return 1;
+}
 #endif
 
 static char command[160];
