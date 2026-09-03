@@ -2023,9 +2023,17 @@ void UITask::shutdown(bool restart){
      while a non-blocking buzzer.loop() plays out in UITask::loop()
   */
   buzzer.shutdown();
+#ifdef SIM_PLATFORM
+  // The sim runs single-threaded on the browser's main JS thread (no real
+  // hardware to actually shut down) -- up to 2.5s of a real, synchronous
+  // busy-wait here blocks that thread and freezes the whole page for the
+  // duration, same class of issue as the low-battery pre-shutdown pause
+  // skipped below. Skip the wait entirely in the sim.
+#else
   uint32_t buzzer_timer = millis(); // fail-safe shutdown
   while (buzzer.isPlaying() && (millis() - buzzer_timer) < 2500)
     buzzer.loop();
+#endif
 
   #endif // PIN_BUZZER
 
