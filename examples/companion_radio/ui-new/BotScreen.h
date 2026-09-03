@@ -96,8 +96,14 @@ class BotScreen : public UIScreen {
     _num_rooms = 0;
     ContactInfo ci;
     int total = the_mesh.getNumContacts();
+    // +MAX_ANON_CONTACTS: getContactByIdx() indexes the raw contacts[] table,
+    // whose first MAX_ANON_CONTACTS slots are reserved anon-request entries
+    // that getNumContacts() already excludes from its count (see
+    // NearbyScreen.h's own contact scan, and MessagesScreen.h's
+    // buildContactList(), for the same offset) -- without it this underrode
+    // real room-server contacts by up to MAX_ANON_CONTACTS.
     for (int i = 0; i < total; i++)
-      if (the_mesh.getContactByIdx(i, ci) && ci.type == ADV_TYPE_ROOM) _num_rooms++;
+      if (the_mesh.getContactByIdx(MAX_ANON_CONTACTS + i, ci) && ci.type == ADV_TYPE_ROOM) _num_rooms++;
   }
 
   // Header as a circular tab bar (shared geometry — see TabBar.h). `right_reserve`

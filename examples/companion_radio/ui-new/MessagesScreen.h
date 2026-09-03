@@ -694,8 +694,20 @@ class MessagesScreen : public UIScreen {
     // task stack for one local array.
     uint8_t keys[MAX_CONTACTS];
     bool fav_only = rooms ? (p && p->room_fav_only) : !(p && p->dm_show_all);
+    // getContactByIdx() indexes the RAW contacts[] table, whose first
+    // MAX_ANON_CONTACTS slots are reserved for anon requests (see
+    // BaseChatMesh::resetContacts()/ContactsIterator); getNumContacts()
+    // already excludes them from the count, so the real contacts start at
+    // MAX_ANON_CONTACTS, not 0 -- same offset NearbyScreen.h's own contact
+    // scan already applies. Without it, this loop only ever read the
+    // reserved anon slots (empty name, type 0) for the first
+    // MAX_ANON_CONTACTS iterations and, for any total at or under that count,
+    // NEVER reached a real contact at all -- e.g. a device with exactly one
+    // known contact would show "No favourites" with an empty list forever,
+    // regardless of the dm_show_all/fav_only setting or that contact's own
+    // favourite flag.
     for (int i = 0; i < total; i++) {
-      if (!the_mesh.getContactByIdx(i, c)) continue;
+      if (!the_mesh.getContactByIdx(MAX_ANON_CONTACTS + i, c)) continue;
       if (c.type != (rooms ? ADV_TYPE_ROOM : ADV_TYPE_CHAT)) continue;
       bool fav = (c.flags & 0x01) != 0;
       if (fav_only && !fav) continue;
@@ -703,7 +715,11 @@ class MessagesScreen : public UIScreen {
       if (k > 127) k = 127;
       if (fav && !(p && p->fav_sort_off)) k += 128;
       keys[_num_contacts] = k;
-      _sorted[_num_contacts++] = i;
+      // Store the RAW table index (not the bare loop counter) -- every other
+      // call site in this file (render()'s mesh_idx, toggleFav(), the
+      // context-menu handlers, ...) reads _sorted[...] straight into
+      // getContactByIdx() with no offset of its own.
+      _sorted[_num_contacts++] = MAX_ANON_CONTACTS + i;
     }
     // Descending insertion sort; rows with key 0 keep their contact-table order.
     for (int i = 1; i < _num_contacts; i++) {

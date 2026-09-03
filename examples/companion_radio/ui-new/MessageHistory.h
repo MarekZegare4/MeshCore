@@ -388,9 +388,12 @@ private:
   // Look up a contact by 4-byte pub_key prefix (as stored in DmHistEntry).
   bool contactByPrefix(const uint8_t* prefix, ContactInfo& out) const {
     int total = the_mesh.getNumContacts();
+    // +MAX_ANON_CONTACTS: see MessagesScreen.h's buildContactList() for why
+    // getContactByIdx() needs this offset (raw table index, not the
+    // anon-excluded logical count getNumContacts() returns).
     for (int i = 0; i < total; i++) {
       ContactInfo c;
-      if (!the_mesh.getContactByIdx(i, c)) continue;
+      if (!the_mesh.getContactByIdx(MAX_ANON_CONTACTS + i, c)) continue;
       if (memcmp(c.id.pub_key, prefix, 4) == 0) { out = c; return true; }
     }
     return false;
