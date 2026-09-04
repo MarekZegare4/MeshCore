@@ -51,7 +51,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sim_is_ready() {
 
 // Same idea as companion_radio's sim_test_advert_flood() -- MyMesh's own
 // updateAdvertTimer() (called once from begin()) doesn't fire the repeater's
-// first self-advert for a full 2 minutes (advert_interval defaults to 1,
+// first self-advert for a full 6 minutes (advert_interval defaults to 3,
 // scaled *2*60*1000ms -- see MyMesh::updateAdvertTimer()/begin() in this
 // same MyMesh.cpp), so a host page that wants hero/B to discover the
 // repeater as a contact immediately on boot (rather than waiting out that
