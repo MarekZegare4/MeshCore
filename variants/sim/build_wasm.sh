@@ -213,6 +213,11 @@ done
 # included in the build" -- confirmed by hitting exactly that during Phase
 # 3. Purely additive: nothing Phase 2's web/index.html already does
 # (sim_enqueue_key() with a plain number, no buffer marshaling) is affected.
+#
+# HEAPF32,HEAP32 (relay-bridge addition): sim_radio_get_params() writes its
+# freq/bw (float) and sf/cr (int) results into a JS-malloc'd scratch buffer
+# via out-params -- reading them back needs the typed-array views, same
+# reasoning as HEAPU8 above for sim_radio_poll_tx()'s byte buffer.
 "$EMXX" \
   "${OBJS[@]}" \
   -lidbfs.js \
@@ -222,7 +227,7 @@ done
   -sEXPORT_NAME=MeshCoreSim \
   -sENVIRONMENT=web \
   -sEXIT_RUNTIME=0 \
-  -sEXPORTED_RUNTIME_METHODS=FS,ccall,cwrap,HEAPU8 \
+  -sEXPORTED_RUNTIME_METHODS=FS,ccall,cwrap,HEAPU8,HEAPF32,HEAP32 \
   -sEXPORTED_FUNCTIONS=_main,_malloc,_free \
   -o "$OUT_DIR/meshcore_sim.js"
 

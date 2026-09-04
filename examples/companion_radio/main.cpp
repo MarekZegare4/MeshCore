@@ -430,6 +430,22 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_get_num_contacts() {
   return the_mesh.getNumContacts();
 }
 
+// The live radio channel config -- lets a host page (meshcore-solo-site's
+// WebSocket relay bridge) tag this instance's outgoing packets with what
+// it's currently tuned to, so a server-side relay can fan bytes out only to
+// other instances tuned to the same freq/bw/sf/cr, mirroring real LoRa
+// channel isolation. Reads NodePrefs directly (not SimRadio, which never
+// stores the values SimRadio::setParams() is called with) since NodePrefs
+// is the actual live source of truth -- the same fields the on-device
+// Settings > Radio screen edits via UITask::applyRadioParams().
+extern "C" EMSCRIPTEN_KEEPALIVE void sim_radio_get_params(float* out_freq, float* out_bw, int* out_sf, int* out_cr) {
+  NodePrefs* p = g_sim_ready ? the_mesh.getNodePrefs() : nullptr;
+  *out_freq = p ? p->freq : 0;
+  *out_bw   = p ? p->bw   : 0;
+  *out_sf   = p ? p->sf   : 0;
+  *out_cr   = p ? p->cr   : 0;
+}
+
 // Real hardware ships with NodePrefs::HP_DEFAULT -- a curated 5-page Home
 // carousel (Clock/Tools/Shutdown/Favourites/Map) -- so a first-time user
 // isn't handed 13 pages to joystick through; the rest (Recent/Radio/

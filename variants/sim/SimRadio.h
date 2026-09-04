@@ -116,7 +116,14 @@ public:
     // time(NULL) second, same `rand()` process state, often the same
     // `this` address across independent-but-identically-laid-out linear
     // memories) and end up with correlated "random" behaviour.
-    return (uint32_t)time(NULL) ^ (uint32_t)(uintptr_t)this ^ (uint32_t)rand() ^ sim_instance_salt();
+    // sim_instance_entropy(): same reasoning, but for two genuinely
+    // different browser tabs/machines both booting a same-tagged instance
+    // (e.g. two different visitors' 'hero') -- salt alone is a pure
+    // function of the tag string, identical for both; this mixes in real
+    // crypto.getRandomValues()-sourced entropy from the host page. See
+    // SimInstance.h and SimRNG.h for the full story (found while testing
+    // meshcore-solo-site's cross-visitor relay bridge).
+    return (uint32_t)time(NULL) ^ (uint32_t)(uintptr_t)this ^ (uint32_t)rand() ^ sim_instance_salt() ^ sim_instance_entropy();
   }
 
   void getFreqBounds(float& min_mhz, float& max_mhz) const {

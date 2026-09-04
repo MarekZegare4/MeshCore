@@ -51,6 +51,35 @@ inline uint32_t sim_instance_salt() {
     return h >>> 0;
   });
 }
+
+// meshcore-solo-site's WebSocket relay bridge (Phase 3) exposed a real gap
+// in sim_instance_salt() alone: it's a pure function of the simInstanceTag
+// STRING ('hero'/'B'/'R'), so it's only ever useful for telling apart
+// same-tab instances that use different tags -- it's the SAME value every
+// time for two genuinely different browser tabs/machines that both boot a
+// 'hero' instance, which is exactly the new cross-visitor case. Combined
+// with SimRNG::begin()'s other two seed ingredients -- time(NULL) (1-second
+// resolution: two real visitors loading the page in the same second collide
+// outright) and `(uintptr_t)this` (a WASM linear-memory address, which is
+// fully deterministic across independent boots of the same binary doing the
+// same allocation sequence -- there's no ASLR inside a wasm sandbox, so this
+// contributes zero actual entropy, not "usually" different) -- two distinct
+// real visitors landing on the exact same wall-clock second reliably
+// produced byte-identical generated Ed25519 identities (confirmed while
+// testing the relay bridge: two independent, freshly-IDBFS browser contexts
+// launched together produced provably identical advert packets end to end).
+// A host page now passes one genuinely random value from the one place that
+// actually has real entropy per browser session -- crypto.getRandomValues()
+// -- as `simEntropy` on the Module config object (see meshcore-solo-site's
+// bootInstance()/bootRepeater()), read back here the same way
+// simInstanceTag already is. Defaults to 0 (this function's old, sole
+// behavior) if a host page doesn't set it, so nothing else changes.
+inline uint32_t sim_instance_entropy() {
+  return (uint32_t)EM_ASM_INT({
+    return (typeof Module !== 'undefined' && Module['simEntropy']) ? (Module['simEntropy'] >>> 0) : 0;
+  });
+}
 #else
 inline uint32_t sim_instance_salt() { return 0; }
+inline uint32_t sim_instance_entropy() { return 0; }
 #endif
