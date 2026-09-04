@@ -62,7 +62,14 @@ void BaseChatMesh::bootstrapRTCfromContacts() {
       latest = contacts[i].lastmod;
     }
   }
-  if (latest != 0) {
+  // A bootstrap is a *floor*, not an assignment: the newest contact we know
+  // of proves the clock must be at least that late, it says nothing about it
+  // being any earlier. Setting it unconditionally drags a clock that already
+  // knows better (a board with a real RTC, or the sim's host wall clock --
+  // see variants/sim/SimRTCClock.h) *backwards* to whatever timestamp
+  // happened to be persisted with the contact list, which then reads as a
+  // stopped/lagging clock on the Home screen after every reboot.
+  if (latest != 0 && latest + 1 > getRTCClock()->getCurrentTime()) {
     getRTCClock()->setCurrentTime(latest + 1);
   }
 }

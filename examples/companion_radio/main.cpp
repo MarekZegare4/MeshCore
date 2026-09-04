@@ -498,6 +498,25 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_disable_screen_timeout() {
   return 1;
 }
 
+// Re-anchors this instance's RTC to the host's real wall clock. SimRTCClock
+// (variants/sim/SimRTCClock.h) already starts out reading time(NULL), so a
+// freshly booted instance needs no help -- but the clock is a shared, live
+// thing the real mesh code legitimately writes to at runtime: a received
+// packet or a contact-list bootstrap carrying a timestamp ahead of ours
+// pushes it forward (BaseChatMesh::bootstrapRTCfromContacts(),
+// MyMesh's own timestamp handling), which is correct behaviour on a real
+// node with no better time source, and means one peer with a badly skewed
+// clock can drag every node that hears it. Calling this on every (re)boot
+// makes "reset the device" mean "the demo's clock matches the visitor's own
+// computer again", the same guarantee the timezone hook above gives.
+// Seconds since the Unix epoch, as a double because a JS Date.now()/1000
+// value has no exact int32 representation to pass through ccall.
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_sync_time(double epoch_secs) {
+  if (epoch_secs < 1000000000.0) return 0;   // obvious nonsense (pre-2001) -- leave the clock alone
+  rtc_clock.setCurrentTime((uint32_t)epoch_secs);
+  return 1;
+}
+
 #ifdef DISPLAY_CLASS
 // Jumps the on-device UI straight to the DM thread with the first known
 // ADV_TYPE_CHAT contact (UITask::openContactDM() -- the exact same real
