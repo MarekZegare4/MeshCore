@@ -2191,6 +2191,22 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sim_buzzer_freq_hz() {
 extern "C" EMSCRIPTEN_KEEPALIVE int sim_buzzer_get_volume() {
   return g_sim_ui_task_for_js ? (int)g_sim_ui_task_for_js->buzzerVolume() : 0;
 }
+
+// Write side: a host page's own mute control (a button next to the d-pad,
+// say) calling this fires UITask::toggleBuzzer() -- the literal function
+// the real on-device Settings > Buzzer mute toggle calls, not a
+// re-implementation of it. That single call already does everything the
+// real toggle does: buzzer.quiet(), writes NodePrefs.buzzer_quiet, clears
+// buzzer_auto (manual mute always wins over auto-mute-on-BT-connect,
+// same as pressing it on the device would), the_mesh.savePrefs(), and
+// the real on-screen "Buzzer: ON/OFF" alert -- so muting from the host
+// page's button is visibly the same event as muting from the keypad.
+extern "C" EMSCRIPTEN_KEEPALIVE void sim_buzzer_toggle_quiet() {
+  if (g_sim_ui_task_for_js) g_sim_ui_task_for_js->toggleBuzzer();
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_buzzer_get_quiet() {
+  return (g_sim_ui_task_for_js && g_sim_ui_task_for_js->isBuzzerQuiet()) ? 1 : 0;
+}
 #endif
 #endif
 

@@ -891,7 +891,27 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.rx_delay_base = 0.0f;   // turn off by default, was 10.0;
   _prefs.tx_delay_factor = 0.5f; // was 0.25f
   _prefs.direct_tx_delay_factor = 0.3f; // was 0.2
+#if defined(SIM_PLATFORM) && defined(__EMSCRIPTEN__)
+  // Every visitor's own local repeater otherwise advertises the exact same
+  // literal ADVERT_NAME ("repeater") -- across meshcore-solo-site's
+  // cross-visitor relay bridge (every visitor's R shares one virtual
+  // channel) that means every hop in every path/relay list is an
+  // indistinguishable wall of "repeater"s, confirmed live. Real repeaters
+  // are near-universally named after the geographic feature they sit on
+  // (an actual, common ham-radio convention) -- a random "<word> <word>"
+  // pair both fixes the indistinguishability and reads as a plausible
+  // real name instead of an obviously synthetic one.
+  // sim_instance_entropy() (SimInstance.h) is the same real
+  // crypto.getRandomValues()-sourced entropy already mixed into this
+  // instance's RNG seed (see SimRNG.h) -- genuinely different per visitor,
+  // not a fixed per-tag value repeatable across boots.
+  static const char* RPT_ADJ[]  = { "Cedar","Copper","Ember","Foggy","Granite","Iron","Misty","Rusty","Silver","Windy","Amber","Frost","Golden","Stone","Lunar","Quiet" };
+  static const char* RPT_FEAT[] = { "Ridge","Summit","Hollow","Peak","Creek","Grove","Meadow","Bluff","Hilltop","Overlook","Pines","Notch","Crossing","Basin","Knoll","Ledge" };
+  uint32_t rn = sim_instance_entropy();
+  snprintf(_prefs.node_name, sizeof(_prefs.node_name), "%s %s", RPT_ADJ[(rn >> 4) & 15], RPT_FEAT[rn & 15]);
+#else
   StrHelper::strncpy(_prefs.node_name, ADVERT_NAME, sizeof(_prefs.node_name));
+#endif
   _prefs.node_lat = ADVERT_LAT;
   _prefs.node_lon = ADVERT_LON;
   StrHelper::strncpy(_prefs.password, ADMIN_PASSWORD, sizeof(_prefs.password));

@@ -41,6 +41,18 @@ extern "C" EMSCRIPTEN_KEEPALIVE uint32_t sim_repeater_get_relay_count() {
   return the_mesh.getNumForwarded();
 }
 
+// This instance's own advertised name (NodePrefs.node_name via
+// MyMesh::getNodeName()) -- randomized per-visitor at first boot (see the
+// SIM_PLATFORM/__EMSCRIPTEN__ branch in MyMesh's constructor) so every
+// hop in a cross-visitor path/relay list isn't just an indistinguishable
+// wall of the literal "repeater". Returns a pointer straight into
+// NodePrefs's own fixed buffer -- valid for the process's whole lifetime,
+// same as every other read-only getter here, no ownership handoff needed
+// (ccall(..., 'string', ...) on the JS side copies it out immediately).
+extern "C" EMSCRIPTEN_KEEPALIVE const char* sim_repeater_get_name() {
+  return the_mesh.getNodeName();
+}
+
 // Same "has setup() actually finished" readiness flag as
 // examples/companion_radio/main.cpp -- see that file's comment for why
 // this is needed instead of a fixed post-ready delay.
