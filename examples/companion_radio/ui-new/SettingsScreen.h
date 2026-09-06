@@ -43,6 +43,7 @@ class SettingsScreen : public UIScreen {
     CH_MELODY,
     AD_SOUND,
     AD_SOUND_SCOPE,
+    MSG_WAKE,
     // Home pages section
     SECTION_HOME_PAGES,
     HOME_CLOCK, HOME_FAVOURITES, HOME_RADIO, HOME_BT, HOME_ADVERT,
@@ -494,6 +495,10 @@ class SettingsScreen : public UIScreen {
       display.setCursor(valCol(display), y);
       { uint8_t v = p ? p->advert_sound_scope : ADVERT_SOUND_SCOPE_ALL;
         display.print(AD_SCOPE_LABELS[v < AD_SCOPE_COUNT ? v : 0]); }
+    } else if (item == MSG_WAKE) {
+      display.print("Msg wake");
+      display.setCursor(valCol(display), y);
+      display.print((p && p->msg_wake_screen_off) ? "OFF" : "ON");
     } else if (isHomePage(item)) {
       if (p) ensurePageOrderInit(p);
       int pos = homePagePosition(item, p);
@@ -906,6 +911,10 @@ public:
     }
     if (_selected == AD_SOUND_SCOPE && p && (left || right || enter)) {
       p->advert_sound_scope ^= 1;
+      _dirty = true; return true;
+    }
+    if (_selected == MSG_WAKE && p && (left || right || enter)) {
+      p->msg_wake_screen_off ^= 1;
       _dirty = true; return true;
     }
     if (isHomePage(_selected) && p) {

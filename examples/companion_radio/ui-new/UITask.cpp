@@ -1933,7 +1933,8 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   showAlert(alert_buf, 3000);
 
   if (_display != NULL && !_locked) {
-    if (!_display->isOn() && !isClientConnected()) {   // wake for the msg unless an app (BLE/USB) is already showing it
+    bool wake_disabled = _node_prefs && _node_prefs->msg_wake_screen_off;
+    if (!wake_disabled && !_display->isOn() && !isClientConnected()) {   // wake for the msg unless an app (BLE/USB) is already showing it, or the user disabled msg-wake
       _display->turnOn();
     }
     if (_display->isOn()) {

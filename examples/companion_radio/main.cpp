@@ -446,14 +446,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void sim_radio_get_params(float* out_freq, float
   *out_cr   = p ? p->cr   : 0;
 }
 
-// Real hardware ships with NodePrefs::HP_DEFAULT -- a curated 5-page Home
-// carousel (Clock/Tools/Shutdown/Favourites/Map) -- so a first-time user
-// isn't handed 13 pages to joystick through; the rest (Recent/Radio/
-// Bluetooth/Advert/GPS/Sensors) are opt-in via Settings > Home Pages. The
-// demo site exists specifically to show off the whole feature set, so it
-// calls this once right after boot to opt every instance into all of them
-// instead -- 0 means "all visible" (see the home_pages_mask comment in
-// NodePrefs.h), same as an as-yet-unset field on a factory-fresh device.
+// A brand-new device's home_pages_mask defaults to 0 = all pages visible
+// (see NodePrefs.h and MyMesh.cpp) -- this is now a no-op on a freshly
+// booted sim instance, but is kept for a saved-prefs instance whose mask
+// was narrowed by an actual Settings > Home Pages visit (an upgrader whose
+// IDBFS identity predates this default, or a visitor who toggled some
+// pages off before this hook runs on a later boot).
 extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_show_all_home_pages() {
   if (!g_sim_ready) return 0;
   NodePrefs* prefs = the_mesh.getNodePrefs();
@@ -496,6 +494,30 @@ extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_disable_screen_timeout() {
   if (!prefs) return 0;
   prefs->auto_off_secs = 0;
   return 1;
+}
+
+// Sets NodePrefs::msg_wake_screen_off directly (the same field Settings >
+// Sound > "Msg wake" toggles -- SettingsScreen.h's MSG_WAKE item), so a test
+// harness can verify UITask::newMsg()'s wake-gating without scripting the
+// on-device Settings accordion navigation key-by-key.
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_set_msg_wake_disabled(int disabled) {
+  if (!g_sim_ready) return 0;
+  NodePrefs* prefs = the_mesh.getNodePrefs();
+  if (!prefs) return 0;
+  prefs->msg_wake_screen_off = disabled ? 1 : 0;
+  return 1;
+}
+
+// Raw home_pages_mask readback -- verifies a fresh instance really does
+// default to 0 (= all pages visible, MyMesh.cpp) without having to count
+// carousel frames on-canvas (unreliable: several home pages, e.g. Clock,
+// redraw with live-changing content every tick, so a page revisited later
+// in the cycle rarely hashes identically to its first visit).
+extern "C" EMSCRIPTEN_KEEPALIVE int sim_test_get_home_pages_mask() {
+  if (!g_sim_ready) return -1;
+  NodePrefs* prefs = the_mesh.getNodePrefs();
+  if (!prefs) return -1;
+  return (int)prefs->home_pages_mask;
 }
 
 // Re-anchors this instance's RTC to the host's real wall clock. SimRTCClock

@@ -611,6 +611,13 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
   rd(&_prefs.fav_sort_off, sizeof(_prefs.fav_sort_off));
   if (_prefs.fav_sort_off > 1) _prefs.fav_sort_off = 0;
 
+  // → 0xC0DE002A: append msg_wake_screen_off. Inverted (see NodePrefs), so
+  // both a pre-0x2A file's stray sentinel byte here and a file that ends
+  // before this field clamp/zero to 0 = wake screen for incoming msgs,
+  // which is the existing default behaviour.
+  rd(&_prefs.msg_wake_screen_off, sizeof(_prefs.msg_wake_screen_off));
+  if (_prefs.msg_wake_screen_off > 1) _prefs.msg_wake_screen_off = 0;
+
   // Schema sentinel: bumped on layout changes. Mismatch means an older file
   // (or a different schema); rd() already zero-inits any fields not present,
   // so we just log it — next savePrefs writes the current sentinel.
@@ -830,6 +837,7 @@ void DataStore::savePrefs(const NodePrefs& _prefs, double node_lat, double node_
     file.write((uint8_t *)_prefs.repeat_extra_scopes, sizeof(_prefs.repeat_extra_scopes));
     file.write((uint8_t *)_prefs.favourite_kinds, sizeof(_prefs.favourite_kinds));
     file.write((uint8_t *)&_prefs.fav_sort_off, sizeof(_prefs.fav_sort_off));
+    file.write((uint8_t *)&_prefs.msg_wake_screen_off, sizeof(_prefs.msg_wake_screen_off));
 
     // Tail sentinel — must be last. See NodePrefs::SCHEMA_SENTINEL. Its write is
     // the one we check: once the flash fills, writes return 0, so a good

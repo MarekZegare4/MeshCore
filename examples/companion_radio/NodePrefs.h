@@ -307,6 +307,12 @@ struct NodePrefs {  // persisted to file
   uint8_t  buzzer_quiet;
   uint8_t  buzzer_volume;   // 0=min..4=max, default 4
   uint8_t  buzzer_auto;        // 0=manual (default), 1=auto-mute when BT connected
+  // Settings > Sound > "Msg wake". Stored inverted (same reason as
+  // fav_sort_off below) so both a fresh memset and an older prefs file (no
+  // bytes here at all) mean "on" -- today's behaviour, where an incoming
+  // message turns the display on (UITask::newMsg()) if it was off and no
+  // companion app is already showing it.
+  uint8_t  msg_wake_screen_off; // 0=wake display for incoming msgs (default), 1=disabled
   uint8_t  ringtone_bpm_idx;   // index into {60,90,120,150,180}
   uint8_t  ringtone_len;        // number of notes in custom ringtone (0 = use default)
   uint8_t  ringtone_notes[32]; // packed: bits0-2=pitch, bits3-4=octave-4, bits5-6=dur_idx
@@ -562,7 +568,7 @@ struct NodePrefs {  // persisted to file
   // repeat_* fields) instead of at the tail, which shifted every field after
   // them by 25 bytes when loading an older file. Never released, but a dev
   // build wrote it, so the number must not be reused for anything else.
-  static const uint32_t SCHEMA_SENTINEL = 0xC0DE0029;
+  static const uint32_t SCHEMA_SENTINEL = 0xC0DE002A;
 
   // Bit-index for each home page. Used by page_order (entries store bit+1) and
   // by home_pages_mask. Single source of truth — both HomeScreen::pageBit/bitToPage
@@ -608,13 +614,6 @@ struct NodePrefs {  // persisted to file
   static const uint16_t HP_FAVOURITES = 1 << HPB_FAVOURITES;
   static const uint16_t HP_MAP        = 1 << HPB_MAP;
   static const uint16_t HP_ALL        = 0x01FF | HP_FAVOURITES | HP_MAP;
-  // Factory-default carousel — the everyday pages only, so a fresh device isn't
-  // 13 pages to joystick through. Messages + Settings are always visible (no
-  // mask bit), so the mask covers: Clock, Tools, Shutdown, Favourites, Map.
-  // Recent / Radio / Bluetooth / Advert / GPS / Sensors are opt-in via
-  // Settings › Home Pages. Existing users keep their saved mask (loaded from
-  // /new_prefs); this only seeds brand-new / factory-reset devices.
-  static const uint16_t HP_DEFAULT    = HP_CLOCK | HP_TOOLS | HP_SHUTDOWN | HP_FAVOURITES | HP_MAP;
 
   // Label for home page by bit-index; returns "" for out-of-range.
   // Array indices match HomePageBit values.
@@ -706,6 +705,9 @@ struct NodePrefs {  // persisted to file
 // Display (a better thematic fit), which shifted padding again and put
 // sizeof back at 2760 -- also confirmed via a real
 // Heltec_v3_companion_radio_ble build. Still no schema change.
+// msg_wake_screen_off (0xC0DE002A) landed in the 1 byte of padding the
+// 0xC0DE0029 bump left over -- confirmed via a real sim_companion_radio
+// (native) build, sizeof unchanged at 2760.
 static_assert(sizeof(NodePrefs) == 2760,
               "NodePrefs layout changed — sync DataStore save/load + clamp, bump "
               "SCHEMA_SENTINEL, then update this size (see steps above).");
