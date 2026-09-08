@@ -910,6 +910,7 @@ class MessagesScreen : public UIScreen {
   // delegated to while active(), the same relationship WaypointsView has with
   // TrailScreen.
   ChannelsView _ch_view;
+  bool _ch_view_pending_rebuild = false; // tracks redraw after channel create/delete
 
 public:
   MessagesScreen(UITask* task, KeyboardWidget* kb)
@@ -1145,6 +1146,7 @@ public:
     _unread_at_entry = 0;
     _viewing_max_seen = 0;
     _ch_view.reset();
+    _ch_view_pending_rebuild = false;
   }
 
   // Recent DM contacts, newest first, deduped (forwarded to the history store).
@@ -1317,7 +1319,16 @@ public:
     display.setColor(DisplayDriver::LIGHT);
 
     // Channel Add/Edit form owns the screen while active.
-    if (_ch_view.active()) return _ch_view.render(display);
+    if (_ch_view.active()) {
+      _ch_view_pending_rebuild = true;
+      return _ch_view.render(display);
+    }
+
+    // Rebuild channel list if one is pending, due to for example a channel create/delete
+    if (_ch_view_pending_rebuild) {
+      _ch_view_pending_rebuild = false;
+      buildChannelList();
+    }
 
     // Navigate-to-location view sits over everything else while active.
     if (_nav_active) { renderNav(display); return 1000; }
