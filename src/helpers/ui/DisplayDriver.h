@@ -348,6 +348,20 @@ public:
   virtual unsigned long marqueeHoldMs()    { return isEink() ? 1200 : 700; }
   virtual uint8_t       marqueeStepChars() { return isEink() ? 3 : 1; }
 
+  // Scales the start/end hold down when only a codepoint or two is actually
+  // hidden -- with a fixed hold, a label that overflows by just that much
+  // (e.g. a short "?A1B2C3D4" hex hop tag squeezed by a couple of pixels)
+  // spends nearly its whole cycle sitting still either side of a single,
+  // barely-there step, which reads as "stuck" rather than "scrolling" for
+  // how little extra text it actually reveals. Longer overflows keep the
+  // full hold, since there's real content worth pausing to read.
+  unsigned long marqueeHoldForSkip(uint16_t skip_cp) {
+    unsigned long full = marqueeHoldMs();
+    if (skip_cp <= 2) return full / 3;
+    if (skip_cp <= 4) return full / 2;
+    return full;
+  }
+
   // draw text with ellipsis if it exceeds max_width. Pass selected=true for
   // the row currently highlighted/focused by the user: instead of a static
   // ellipsis, an overflowing label then animates a "swing" marquee — holds at
@@ -417,7 +431,6 @@ public:
       _marquee_max_w = max_width;
       _marquee_skip_cp = 0;
       _marquee_phase = 0;  // hold at start
-      _marquee_next_at = now + marqueeHoldMs();
 
       // Find the codepoint skip at which the remaining suffix's own width
       // already fits max_width — i.e. the fully-scrolled end position.
@@ -431,6 +444,7 @@ public:
         if (full_width - removed_w <= max_width) break;
       }
       _marquee_max_skip_cp = cp_count;
+      _marquee_next_at = now + marqueeHoldForSkip(cp_count);
     }
 
     // Advance the state machine at most once per elapsed step/hold interval.
@@ -444,7 +458,7 @@ public:
           if (_marquee_skip_cp >= _marquee_max_skip_cp) {
             _marquee_skip_cp = _marquee_max_skip_cp;
             _marquee_phase = 2;
-            _marquee_next_at = now + marqueeHoldMs();
+            _marquee_next_at = now + marqueeHoldForSkip(_marquee_max_skip_cp);
           } else {
             _marquee_next_at = now + marqueeStepMs();
           }
@@ -455,7 +469,7 @@ public:
           if (_marquee_skip_cp <= step) {
             _marquee_skip_cp = 0;
             _marquee_phase = 0;
-            _marquee_next_at = now + marqueeHoldMs();
+            _marquee_next_at = now + marqueeHoldForSkip(_marquee_max_skip_cp);
           } else {
             _marquee_skip_cp -= step;
             _marquee_next_at = now + marqueeStepMs();
