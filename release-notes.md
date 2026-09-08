@@ -11,6 +11,7 @@
 - **Settings › Sound gains "Msg wake".** Turn it off if you don't want an incoming message to turn the screen back on when it was off and no phone/app is connected. On by default — today's behaviour is unchanged either way.
 - **A brand-new (or factory-reset) device now shows every Home page by default**, instead of a curated 5-page carousel (Clock, Tools, Shutdown, Favourites, Map) that made the rest opt-in only. Existing devices' own saved Home Pages selection is untouched.
 - **Repeater builds now default to a 6-minute local advert interval** (was 2 minutes) — quieter out of the box for a unit sitting on a desk or freshly deployed. Change it anytime under Settings › Radio.
+- **The lock screen now shows a title bar** (status icons and battery, node name deliberately left off so a locked device doesn't announce whose it is) and its clock is left-aligned instead of centred. Contributed by @3urobeat.
 
 ### Fixes
 
