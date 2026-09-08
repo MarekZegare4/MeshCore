@@ -40,7 +40,8 @@ If no press is made for 3 seconds, the counter resets.
 
 A brief press of any button wakes the display and shows the lock screen. It displays:
 
-- **Time** — large, same format as the Clock page (24 h / 12 h from Settings)
+- **Title bar** — battery and status icons, same as every other home page — but never the device name, so a locked device doesn't announce whose it is at a glance
+- **Time** — same format as the Clock page (24 h / 12 h from Settings), left-aligned
 - **Date** — day-of-week, day, month
 - **Two sensor values** — the first two Dashboard Config fields (same values configured for the Clock page); shown side by side if both are set
 

@@ -45,6 +45,7 @@ Up to three data fields are shown below the date separator. Each field displays 
 | CO₂         | CO2   | ppm from onboard sensor                                                   |
 | Contacts    | Nodes | Total contacts in the mesh                                                |
 | Messages    | Msgs  | Total unread message count                                                |
+| Satellites  | Sats  | GPS satellite count (or `--` without GPS)                                 |
 
 Sensor fields show `--` when the sensor is not connected or has no data.
 
