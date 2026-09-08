@@ -345,7 +345,7 @@ public:
   // ghosting there). Unchanged frames are skipped by the display's own CRC
   // diff before any real panel push happens, so the hold phases are free.
   virtual unsigned long marqueeStepMs()    { return isEink() ? 900 : 220; }
-  virtual unsigned long marqueeHoldMs()    { return isEink() ? 2500 : 1500; }
+  virtual unsigned long marqueeHoldMs()    { return isEink() ? 1200 : 700; }
   virtual uint8_t       marqueeStepChars() { return isEink() ? 3 : 1; }
 
   // draw text with ellipsis if it exceeds max_width. Pass selected=true for
