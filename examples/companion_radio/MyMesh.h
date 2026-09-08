@@ -297,6 +297,14 @@ public:
 
   void savePrefs() { _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon); }
   void saveRTCTime() { _store->saveRTCTime(); }
+  // Contact updates (new adverts, path/lastmod changes) are lazily debounced
+  // (see dirty_contacts_expiry) to avoid wearing flash on every packet --
+  // under regular mesh traffic the timer keeps getting re-armed, so it can
+  // stay pending for the device's whole uptime. CMD_REBOOT already flushes
+  // this before rebooting; UITask::shutdown() (low-battery auto-shutdown,
+  // long-press power-off) needs the same flush or a whole session's worth
+  // of learned contacts can be lost.
+  void flushDirtyContacts() { if (dirty_contacts_expiry) { saveContacts(); dirty_contacts_expiry = 0; } }
   DataStore* getDataStore() const { return _store; }
   void applyApc();   // (re)initialise Adaptive Power Control from prefs
   // Adaptive Power Control is suppressed while repeating: a repeater wants full,

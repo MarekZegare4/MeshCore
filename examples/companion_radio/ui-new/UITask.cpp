@@ -2177,6 +2177,7 @@ void UITask::shutdown(bool restart){
   // the_mesh.savePrefs() call sites already do without a dirty check.
   the_mesh.savePrefs();
   the_mesh.saveRTCTime();
+  the_mesh.flushDirtyContacts();
 
   // Auto-save the live GPS trail before power-off when the user enabled it
   // (Tools › Trail › Settings › Auto-save). This covers the low-battery
