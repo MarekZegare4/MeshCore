@@ -114,7 +114,6 @@ class UITask : public AbstractUITask {
   UIScreen* gpio_screen = nullptr;
 #endif
   UIScreen* curr = nullptr;
-  CayenneLPP _dash_lpp;
   TrailStore _trail;
   WaypointStore _waypoints;
   LiveTrackStore _livetrack;
@@ -280,6 +279,11 @@ private:
 
   void setCurrScreen(UIScreen* c);
 
+  // Mirror _locked into HomeScreen's LOCK page so the lock screen renders via
+  // the normal home render() path (top-right status bar included) instead of a
+  // dedicated lock-screen code path in loop().
+  void syncLockToHome();
+
   // Centred alert overlay (the showAlert() box). Wraps long text to up to
   // three lines inside the box instead of letting it overflow the border.
   // Shared by the normal render path and the lock screen (so a ringing
@@ -288,7 +292,7 @@ private:
 
 public:
 
-  UITask(mesh::MainBoard* board, BaseSerialInterface* serial) : AbstractUITask(board, serial), _display(NULL), _sensors(NULL), _node_prefs(NULL), _dash_lpp(200) {
+  UITask(mesh::MainBoard* board, BaseSerialInterface* serial) : AbstractUITask(board, serial), _display(NULL), _sensors(NULL), _node_prefs(NULL) {
     next_batt_chck = _next_refresh = 0;
     ui_started_at = 0;
     _batt_mv = 0;
@@ -523,6 +527,17 @@ public:
     _node_prefs->favourite_kinds[slot] = NodePrefs::FAV_KIND_CONTACT;
   }
   bool isButtonPressed() const;
+
+  // Lock-screen support: the HomeScreen LOCK page draws the unlock hint from
+  // these (the platform combo is either "Back+3xEnter" or the CardKB nybble).
+  int  lockSeqCount() const { return _lock_seq_count; }
+  bool hasCardKB() const {
+#if defined(CARDKB_I2C)
+    return _has_cardkb;
+#else
+    return false;
+#endif
+  }
 
   bool isBuzzerQuiet() { 
 #ifdef PIN_BUZZER
