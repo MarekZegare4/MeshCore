@@ -1349,7 +1349,11 @@ public:
           display.drawUnreadBadge(display.width() - 1, y, badges[i], sel);
       }
       display.setColor(DisplayDriver::LIGHT);
-      if (_ctx_menu.active) _ctx_menu.render(display);
+      // Fold the popup's own suggested redraw delay into mq_delay -- otherwise
+      // a marquee inside it (see PopupMenu::render()) only ever advances at
+      // whatever slower cadence this phase's own return statement below picks,
+      // since that return previously ignored this call's result entirely.
+      if (_ctx_menu.active) { int r = _ctx_menu.render(display); if (mq_delay <= 0 || r < mq_delay) mq_delay = r; }
 
     } else if (_phase == CONTACT_PICK) {
       display.drawCenteredHeader(_room_mode ? "SELECT ROOM" : "SELECT CONTACT", true, _ctx_menu.active);
@@ -1371,8 +1375,12 @@ public:
           uint8_t dm_unread = _task->getDMUnread(c.id.pub_key);
           int bw = dm_unread > 0 ? display.unreadBadgeWidth(dm_unread) + 2 : 0;
           int sw = (c.flags & 0x01) ? favStarWidth(display) : 0;
-          int r = display.drawTextEllipsized(2, y, display.width() - 2 - bw - sw - reserve, filtered, sel);
-          if (sel && r > 0) mq_delay = r;
+          // See the channel/DM history bodies' identical comment: suppress this
+          // row's own marquee while a context menu covers it, so the two don't
+          // fight over DisplayDriver's single shared marquee slot.
+          bool name_marquee = sel && !_ctx_menu.active;
+          int r = display.drawTextEllipsized(2, y, display.width() - 2 - bw - sw - reserve, filtered, name_marquee);
+          if (name_marquee && r > 0) mq_delay = r;
           if (sw) drawFavStar(display, display.width() - reserve - bw - sw + 1, y);
           if (dm_unread > 0)
             display.drawUnreadBadge(display.width() - reserve, y, dm_unread, sel);
@@ -1380,7 +1388,11 @@ public:
       });
 
       // Context menu overlay
-      if (_ctx_menu.active) _ctx_menu.render(display);
+      // Fold the popup's own suggested redraw delay into mq_delay -- otherwise
+      // a marquee inside it (see PopupMenu::render()) only ever advances at
+      // whatever slower cadence this phase's own return statement below picks,
+      // since that return previously ignored this call's result entirely.
+      if (_ctx_menu.active) { int r = _ctx_menu.render(display); if (mq_delay <= 0 || r < mq_delay) mq_delay = r; }
 
     } else if (_phase == CHANNEL_PICK) {
       display.drawCenteredHeader("SELECT CHANNEL", true, _ctx_menu.active);
@@ -1407,8 +1419,12 @@ public:
           uint8_t unread = _history.chUnread(_channel_indices[list_idx]);
           int bw = unread > 0 ? display.unreadBadgeWidth(unread) + 2 : 0;
           int sw = chIsFav(_channel_indices[list_idx]) ? favStarWidth(display) : 0;
-          int r = display.drawTextEllipsized(2, y, display.width() - 4 - bw - sw - reserve, ch.name, sel);
-          if (sel && r > 0) mq_delay = r;
+          // See the channel/DM history bodies' identical comment: suppress this
+          // row's own marquee while a context menu covers it, so the two don't
+          // fight over DisplayDriver's single shared marquee slot.
+          bool name_marquee = sel && !_ctx_menu.active;
+          int r = display.drawTextEllipsized(2, y, display.width() - 4 - bw - sw - reserve, ch.name, name_marquee);
+          if (name_marquee && r > 0) mq_delay = r;
           if (sw) drawFavStar(display, display.width() - reserve - bw - sw + 1, y);
           if (unread > 0)
             display.drawUnreadBadge(display.width() - reserve, y, unread, sel);
@@ -1416,7 +1432,11 @@ public:
       });
 
       // Context menu overlay
-      if (_ctx_menu.active) _ctx_menu.render(display);
+      // Fold the popup's own suggested redraw delay into mq_delay -- otherwise
+      // a marquee inside it (see PopupMenu::render()) only ever advances at
+      // whatever slower cadence this phase's own return statement below picks,
+      // since that return previously ignored this call's result entirely.
+      if (_ctx_menu.active) { int r = _ctx_menu.render(display); if (mq_delay <= 0 || r < mq_delay) mq_delay = r; }
 
     } else if (_phase == DM_HIST) {
       display.setTextSize(1);
@@ -1443,7 +1463,11 @@ public:
                          _history.dmEffectiveStatus(e), e.attempt + 1);
             display.setColor(DisplayDriver::LIGHT);
           }
-          if (_ctx_menu.active) _ctx_menu.render(display);
+          // Fold the popup's own suggested redraw delay into mq_delay -- otherwise
+      // a marquee inside it (see PopupMenu::render()) only ever advances at
+      // whatever slower cadence this phase's own return statement below picks,
+      // since that return previously ignored this call's result entirely.
+      if (_ctx_menu.active) { int r = _ctx_menu.render(display); if (mq_delay <= 0 || r < mq_delay) mq_delay = r; }
           return ret;
         }
         return 500;
@@ -1561,8 +1585,14 @@ public:
         if (portrait_expand) {
           for (int li = 0; li < nl; li++) { display.setCursor(box.x + 3, y + (li + 1) * lh + 1); display.print(s_wrap_lines[li]); }
         } else {
-          int r_body = display.drawTextEllipsized(box.x + 3, y + lh + 1, box.w - 6, body, sel);
-          if (sel && r_body > 0) mq_delay = r_body;
+          // Suppress this row's own marquee while _ctx_menu (Path/Relayed by,
+          // etc.) sits on top of it -- both would otherwise fight over
+          // DisplayDriver's single shared marquee slot every frame (this row
+          // redraws every frame regardless of the popup), each is_new-resetting
+          // the other's animation and producing a stuck-then-jumpy scroll.
+          bool body_marquee = sel && !_ctx_menu.active;
+          int r_body = display.drawTextEllipsized(box.x + 3, y + lh + 1, box.w - 6, body, body_marquee);
+          if (body_marquee && r_body > 0) mq_delay = r_body;
         }
       }
 
@@ -1585,7 +1615,11 @@ public:
       }
 
       drawComposeButton(display, cby, lh, _dm_hist_sel == -1);
-      if (_ctx_menu.active) _ctx_menu.render(display);
+      // Fold the popup's own suggested redraw delay into mq_delay -- otherwise
+      // a marquee inside it (see PopupMenu::render()) only ever advances at
+      // whatever slower cadence this phase's own return statement below picks,
+      // since that return previously ignored this call's result entirely.
+      if (_ctx_menu.active) { int r = _ctx_menu.render(display); if (mq_delay <= 0 || r < mq_delay) mq_delay = r; }
       { int ret = dm_count > 0 ? 500 : 2000; return (mq_delay > 0 && mq_delay < ret) ? mq_delay : ret; }
 
     } else if (_phase == CHANNEL_HIST) {
@@ -1616,7 +1650,11 @@ public:
             drawAckGlyph(display, 2 + display.getTextWidth(fsender) + 3, 1, ACK_OK, 1, relay_count);
             display.setColor(DisplayDriver::LIGHT);
           }
-          if (_ctx_menu.active) _ctx_menu.render(display);
+          // Fold the popup's own suggested redraw delay into mq_delay -- otherwise
+      // a marquee inside it (see PopupMenu::render()) only ever advances at
+      // whatever slower cadence this phase's own return statement below picks,
+      // since that return previously ignored this call's result entirely.
+      if (_ctx_menu.active) { int r = _ctx_menu.render(display); if (mq_delay <= 0 || r < mq_delay) mq_delay = r; }
           return ret;
         }
         return 2000;
@@ -1742,8 +1780,14 @@ public:
         if (portrait_expand) {
           for (int li = 0; li < nl; li++) { display.setCursor(box.x + 3, y + (li + 1) * lh + 1); display.print(s_wrap_lines[li]); }
         } else {
-          int r_body = display.drawTextEllipsized(box.x + 3, y + lh + 1, box.w - 6, body, sel);
-          if (sel && r_body > 0) mq_delay = r_body;
+          // Suppress this row's own marquee while _ctx_menu (Path/Relayed by,
+          // etc.) sits on top of it -- both would otherwise fight over
+          // DisplayDriver's single shared marquee slot every frame (this row
+          // redraws every frame regardless of the popup), each is_new-resetting
+          // the other's animation and producing a stuck-then-jumpy scroll.
+          bool body_marquee = sel && !_ctx_menu.active;
+          int r_body = display.drawTextEllipsized(box.x + 3, y + lh + 1, box.w - 6, body, body_marquee);
+          if (body_marquee && r_body > 0) mq_delay = r_body;
         }
       }
 
@@ -1765,7 +1809,11 @@ public:
       }
 
       drawComposeButton(display, cby, lh, _hist_sel == -1);
-      if (_ctx_menu.active) _ctx_menu.render(display);
+      // Fold the popup's own suggested redraw delay into mq_delay -- otherwise
+      // a marquee inside it (see PopupMenu::render()) only ever advances at
+      // whatever slower cadence this phase's own return statement below picks,
+      // since that return previously ignored this call's result entirely.
+      if (_ctx_menu.active) { int r = _ctx_menu.render(display); if (mq_delay <= 0 || r < mq_delay) mq_delay = r; }
 
     } else if (_phase == KEYBOARD) {
       return _kb->render(display);
