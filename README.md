@@ -2,6 +2,8 @@
 
 A fork of the official [MeshCore](https://github.com/meshcore-dev/MeshCore) companion radio firmware with a full standalone on-device UI and extra features.
 
+**Try it out live in your browser: [solo.marekzegarek.com](https://solo.marekzegarek.com)**
+
 Join the discussion on the official MeshCore Discord: https://discord.gg/sdhYArU2jr
 
 Solo firmware thread: https://discord.com/channels/1495203904898728149/1505294337884553447
