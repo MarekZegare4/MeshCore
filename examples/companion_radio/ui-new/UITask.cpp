@@ -938,7 +938,11 @@ public:
         struct tm* ti = gmtime(&t);
         char buf[12];
         bool h12 = _node_prefs && _node_prefs->clock_12h;
-        int date_y = drawClockTime(display, 0, ti, h12, /*show_sec*/false);
+        // top_y=lh, not 0: the title bar (battery + status icons, drawn above
+        // for every _page != CLOCK, LOCK included) already occupies row 0 --
+        // starting the clock there overlapped it, worst on portrait e-ink's
+        // huge (size-4) HH/MM block, which fills most of the narrow width.
+        int date_y = drawClockTime(display, lh, ti, h12, /*show_sec*/false);
         display.setTextSize(1);
         static const char* wd[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
         static const char* mo[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
