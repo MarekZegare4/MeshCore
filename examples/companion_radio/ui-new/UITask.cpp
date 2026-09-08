@@ -435,7 +435,12 @@ class HomeScreen : public UIScreen {
     return order[((cur + dir) % n + n) % n];
   }
 
-  int renderBatteryIndicator(DisplayDriver& display, uint16_t batteryMilliVolts) {
+  // reserve_left: how much width from x=0 must stay clear of status icons --
+  // the node name on every other page (name_min below), or the LOCK page's
+  // own clock (see the LOCK branch in render(), which passes its actual
+  // footprint here so the icon row sheds low-priority icons instead of
+  // drawing over the clock). -1 = use the normal name reserve.
+  int renderBatteryIndicator(DisplayDriver& display, uint16_t batteryMilliVolts, int reserve_left = -1) {
     int low_mv = _node_prefs ? (int)_node_prefs->low_batt_mv : 0;
     int pct = battMvToPercent((int)batteryMilliVolts, low_mv);
 
@@ -513,7 +518,7 @@ class HomeScreen : public UIScreen {
     };
 
     int x = battLeftX;
-    const int name_min = display.getCharWidth() * 5;   // always keep ~5 chars for the name
+    const int name_min = (reserve_left >= 0) ? reserve_left : display.getCharWidth() * 5;
     for (const Sicon& s : icons) {
       if (!s.active) continue;
       int ix = x - ind - ind_gap;
@@ -748,7 +753,19 @@ public:
     // Hidden on fullscreen pages (CLOCK).
     if (_page != CLOCK) {
       display.setColor(DisplayDriver::LIGHT);
-      int rightEdge = renderBatteryIndicator(display, _task->getBattMilliVolts());
+      int lock_reserve = -1;
+      if (_page == LOCK) {
+        // The lock screen's own clock shares row 0 with this title bar --
+        // reserve its real footprint instead of the usual name_min, so the
+        // (already priority-ordered) status icons shed low-priority ones as
+        // needed and never draw over it. Built-in font is fixed-width, so a
+        // worst-case digit string measures this without the actual time.
+        bool tall = display.height() > display.width();
+        display.setTextSize(tall ? 4 : 2);
+        lock_reserve = display.getTextWidth(tall ? "88" : "88:88");
+        display.setTextSize(1);
+      }
+      int rightEdge = renderBatteryIndicator(display, _task->getBattMilliVolts(), lock_reserve);
       display.setColor(DisplayDriver::LIGHT);
 
       if (_page != LOCK) {
@@ -874,6 +891,15 @@ public:
 #else
               strcpy(val, "--");
 #endif
+            } else if (field == DASH_SATS) {
+              strcpy(label, "Sats");
+#if ENV_INCLUDE_GPS == 1
+              LocationProvider* loc = sensors.getLocationProvider();
+              if (loc) snprintf(val, sizeof(val), "%ld", loc->satellitesCount());
+              else     strcpy(val, "--");
+#else
+              strcpy(val, "--");
+#endif
             } else if (field == DASH_NODES) {
               strcpy(label, "Nodes");
               snprintf(val, sizeof(val), "%d", the_mesh.getNumContacts());
@@ -938,11 +964,7 @@ public:
         struct tm* ti = gmtime(&t);
         char buf[12];
         bool h12 = _node_prefs && _node_prefs->clock_12h;
-        // top_y=lh, not 0: the title bar (battery + status icons, drawn above
-        // for every _page != CLOCK, LOCK included) already occupies row 0 --
-        // starting the clock there overlapped it, worst on portrait e-ink's
-        // huge (size-4) HH/MM block, which fills most of the narrow width.
-        int date_y = drawClockTime(display, lh, ti, h12, /*show_sec*/false);
+        int date_y = drawClockTime(display, 0, ti, h12, /*show_sec*/false);
         display.setTextSize(1);
         static const char* wd[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
         static const char* mo[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
@@ -2244,6 +2266,16 @@ static void formatDashVal(uint8_t field, char* val, int val_len, uint16_t batt_m
       else strcpy(val, "no fix");
       return;
     }
+    case DASH_SATS: {
+      LocationProvider* loc = sensors.getLocationProvider();
+      if (loc) snprintf(val, val_len, "%ld sats", loc->satellitesCount());
+      else     strcpy(val, "--");
+      return;
+    }
+#else
+    case DASH_SATS:
+      strcpy(val, "--");
+      return;
 #endif
     default: break;
   }
