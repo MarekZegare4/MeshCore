@@ -2383,6 +2383,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     if (dirty_contacts_expiry) { // is there are pending dirty contacts write needed?
       saveContacts();
     }
+    savePrefs();  // flush any on-device setting change not yet persisted -- see UITask::shutdown()'s comment
     board.reboot();
   } else if (cmd_frame[0] == CMD_GET_BATT_AND_STORAGE) {
     uint8_t reply[11];
@@ -3191,6 +3192,7 @@ void MyMesh::checkCLIRescueCmd() {
       }
 
     } else if (strcmp(cli_command, "reboot") == 0) {
+      savePrefs();  // flush any on-device setting change not yet persisted -- see UITask::shutdown()'s comment
       board.reboot();  // doesn't return
     } else {
       Serial.println("  Error: unknown command");

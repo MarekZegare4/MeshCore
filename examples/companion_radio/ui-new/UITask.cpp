@@ -2012,6 +2012,19 @@ bool UITask::savePrefsIfDirty(bool& dirty) {
   hardware-agnostic pre-shutdown activity should be done here
 */
 void UITask::shutdown(bool restart){
+  // Every screen that edits NodePrefs (Settings, Bot, Trail, Locator, GPS
+  // sharing, etc.) only persists on its OWN "Cancel"/exit path (see each
+  // screen's own savePrefsIfDirty(_dirty) call) -- there was previously no
+  // flush here at all. A user who edits a setting and then triggers a
+  // reboot/power-off WITHOUT first backing out of that screen (e.g. the
+  // display auto-offs while still inside Settings, then the device is
+  // later hard-reset or its battery pulled; or a low-battery auto-shutdown
+  // fires mid-edit) silently lost that change on the next boot -- this was
+  // the actual mechanism behind reports of "settings don't survive a
+  // reboot." Unconditional and cheap: an unchanged NodePrefs still writes
+  // identical bytes, same as this codebase's many other direct
+  // the_mesh.savePrefs() call sites already do without a dirty check.
+  the_mesh.savePrefs();
   the_mesh.saveRTCTime();
 
   // Auto-save the live GPS trail before power-off when the user enabled it
