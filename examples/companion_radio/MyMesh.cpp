@@ -2380,11 +2380,13 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeOKFrame();
     }
   } else if (cmd_frame[0] == CMD_REBOOT && memcmp(&cmd_frame[1], "reboot", 6) == 0) {
-    if (dirty_contacts_expiry) { // is there are pending dirty contacts write needed?
-      saveContacts();
+    if (_ui) {
+      _ui->shutdown(true);
+    } else {
+      flushDirtyContacts();
+      savePrefs();
+      board.reboot();
     }
-    savePrefs();  // flush any on-device setting change not yet persisted -- see UITask::shutdown()'s comment
-    board.reboot();
   } else if (cmd_frame[0] == CMD_GET_BATT_AND_STORAGE) {
     uint8_t reply[11];
     int i = 0;
@@ -3192,8 +3194,13 @@ void MyMesh::checkCLIRescueCmd() {
       }
 
     } else if (strcmp(cli_command, "reboot") == 0) {
-      savePrefs();  // flush any on-device setting change not yet persisted -- see UITask::shutdown()'s comment
-      board.reboot();  // doesn't return
+      if (_ui) {
+        _ui->shutdown(true);
+      } else {
+        flushDirtyContacts();
+        savePrefs();  // flush any on-device setting change not yet persisted -- see UITask::shutdown()'s comment
+        board.reboot();  // doesn't return
+      }
     } else {
       Serial.println("  Error: unknown command");
     }

@@ -1018,9 +1018,8 @@ public:
       return true;
     }
     if (_selected == REBOOT && enter) {
-      _task->savePrefsIfDirty(_dirty);   // don't lose pending edits across the restart
       _task->showAlert("Rebooting...", 800);
-      board.reboot();
+      _task->shutdown(true);   // flushes prefs/RTC/contacts/trail, then reboots -- single choke point
       return true;
     }
     if (_selected == KEYBOARD_TYPE && p && (left || right || enter)) {

@@ -148,5 +148,12 @@ public:
   // added later at the same slot would silently inherit the old one's bot/
   // share target or notification melody. Default no-op.
   virtual void onChannelRemoved(uint8_t channel_idx) {}
+  // Single choke point for every controlled power-down (low-battery auto-off,
+  // long-press power-off, and now every board.reboot() caller too): flush
+  // prefs/RTC/contacts/trail before the board actually goes down or restarts,
+  // so no exit path can silently skip a pending write. restart=true reboots,
+  // false powers off. Every UI variant (ui-new/ui-tiny/ui-orig) implements
+  // this the same way -- see each's UITask::shutdown().
+  virtual void shutdown(bool restart = false) = 0;
   virtual void loop() = 0;
 };
