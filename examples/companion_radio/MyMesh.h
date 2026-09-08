@@ -11,16 +11,25 @@ class UITask;
 /*------------ Frame Protocol --------------*/
 #define FIRMWARE_VER_CODE 13
 
+// Fallback only -- every real build (local or CI) goes through build.sh, which
+// always injects its own FIRMWARE_BUILD_DATE (today's date at build time).
+// __DATE__ is the compiler's own "Mmm dd yyyy" build-date macro, so a
+// `pio run` invoked directly (bypassing build.sh -- e.g. an IDE's Build
+// button) still shows the date it was actually compiled, instead of a
+// hardcoded string that would otherwise go stale and never change again.
 #ifndef FIRMWARE_BUILD_DATE
-#define FIRMWARE_BUILD_DATE "19 Aug 2026"
+#define FIRMWARE_BUILD_DATE __DATE__
 #endif
 
 // Fallback only -- every real build (local or CI) goes through build.sh, which
 // always injects FIRMWARE_VERSION itself (the pushed tag name for a release,
 // "dev-<commit>" otherwise; see build-solo-firmwares.yml). This default only
-// shows up for a `pio run` invoked directly, bypassing build.sh entirely.
+// shows up for a `pio run` invoked directly, bypassing build.sh entirely --
+// a plain "dev build" stamped with its compile date instead of a specific
+// version number that would otherwise be hardcoded here and go stale (and
+// misleadingly claim to BE that version) the moment development moves on.
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v1.27-dev"
+#define FIRMWARE_VERSION "dev-" __DATE__
 #endif
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
