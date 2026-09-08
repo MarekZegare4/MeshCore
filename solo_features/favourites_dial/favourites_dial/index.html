@@ -1135,10 +1135,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#pinning-a-contact" class="md-nav__link">
+  <a href="#pinning" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pinning a contact
+        Pinning
       
     </span>
   </a>
@@ -1146,10 +1146,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#unpinning-a-contact" class="md-nav__link">
+  <a href="#unpinning" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Unpinning a contact
+        Unpinning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pinning-is-not-the-same-as-favouriting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pinning is not the same as favouriting
       
     </span>
   </a>
@@ -1598,10 +1609,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#pinning-a-contact" class="md-nav__link">
+  <a href="#pinning" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pinning a contact
+        Pinning
       
     </span>
   </a>
@@ -1609,10 +1620,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#unpinning-a-contact" class="md-nav__link">
+  <a href="#unpinning" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Unpinning a contact
+        Unpinning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pinning-is-not-the-same-as-favouriting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pinning is not the same as favouriting
       
     </span>
   </a>
@@ -1679,7 +1701,7 @@
 </tr>
 </tbody>
 </table>
-<p>A dedicated home page showing a grid of up to 6 pinned contacts for quick access. The layout adapts to the display orientation:</p>
+<p>A dedicated home page showing a grid of up to 6 pinned conversations — chat contacts, room servers or channels — for quick access. The layout adapts to the display orientation:</p>
 <ul>
 <li><strong>Portrait</strong> (OLED, e-ink portrait) — 2 columns × 3 rows</li>
 <li><strong>Landscape</strong> (e-ink landscape) — 3 columns × 2 rows</li>
@@ -1687,20 +1709,17 @@
 <hr />
 <h3 id="navigation">Navigation</h3>
 <p>Navigate tiles with <strong>UP / DOWN / LEFT / RIGHT</strong>. Pressing a directional key at the edge of the grid switches to the adjacent home page instead of wrapping.</p>
-<p><strong>Enter on a filled tile</strong> — opens that contact's DM directly.</p>
-<p><strong>Enter on an empty tile (<code>+</code>)</strong> — opens a contact picker to fill the slot.</p>
+<p><strong>Enter on a filled tile</strong> — opens that conversation directly: a contact's DM, a channel's history, or a room server (running the room's login handshake first if it isn't logged in yet).</p>
+<p><strong>Enter on an empty tile (<code>+</code>)</strong> — starts the picker to fill the slot.</p>
+<p><strong>Hold Enter on a filled tile</strong> — opens <strong>Unpin</strong> / <strong>Replace</strong> for that slot.</p>
+<p>Channel tiles show their name with a leading <code>#</code>, so they read apart from contacts and rooms sharing the same grid.</p>
 <hr />
 <h3 id="unread-badge">Unread badge</h3>
-<p>Filled tiles show an unread message count in the top-right corner when there are unread DMs from that contact. The contact name is ellipsized to make room for the badge.</p>
-<p>If a pinned contact is removed from the contacts list — explicitly, or auto-evicted to make room when the table is full — its slot is freed automatically and goes back to an empty <code>+</code> tile.</p>
+<p>Filled tiles show an unread message count in the top-right corner — unread DMs for a contact or room, unread posts for a channel. The name is ellipsized to make room for the badge.</p>
+<p>If a pinned target disappears — a contact removed explicitly or auto-evicted to make room when the table is full, or a deleted channel — its slot is freed automatically and goes back to an empty <code>+</code> tile.</p>
 <hr />
-<h3 id="pinning-a-contact">Pinning a contact</h3>
-<p><strong>From the Favourites Dial</strong> — press <strong>Enter</strong> on an empty tile (<code>+</code>). A picker opens showing:</p>
-<ol>
-<li>Contacts marked as favourites in the upstream app (starred contacts) — listed first</li>
-<li>Recent DM contacts — listed after</li>
-<li>All remaining chat contacts — fallback when the first two tiers are empty (e.g. fresh install before any DMs)</li>
-</ol>
+<h3 id="pinning">Pinning</h3>
+<p><strong>From the Favourites Dial</strong> — press <strong>Enter</strong> on an empty tile (<code>+</code>), or <strong>Hold Enter</strong> on a filled one and choose <strong>Replace</strong>. This opens the <strong>Messages</strong> screen in its normal Direct / Channels / Rooms browse; pick an entry and you land back on the dial with that slot filled. It's the same list you already use to open a conversation, rather than a second browser of its own.</p>
 <table>
 <thead>
 <tr>
@@ -1715,14 +1734,18 @@
 </tr>
 </tbody>
 </table>
-<!-- screenshot pending: Pin-to-dial contact picker (favourites first, then recent DMs, then all contacts) -->
+<!-- screenshot pending: Messages browse entered from an empty dial tile -->
 
-<p>Select a contact to pin it to that slot.</p>
-<p><strong>From a DM conversation</strong> — <strong>Hold Enter</strong> › context menu › <strong>Pin to dial</strong>, then choose a slot from the slot picker (Slot 1–6, showing the current occupant name or "empty").</p>
-<p>If the selected contact is already pinned in another slot, it is moved to the new slot automatically.</p>
+<p><strong>From the Messages lists</strong> — <strong>Hold Enter</strong> on a contact, room or channel entry › <strong>Pin to dial</strong>, then choose a slot from the slot picker (Slot 1–6, showing the current occupant or "empty").</p>
+<p><strong>From Tools › Nodes</strong> — <strong>Hold Enter</strong> on a node › <strong>Pin to dial</strong>. This one doesn't ask which slot; it takes the first free one (and says which), since that menu is already long.</p>
+<p>If the target is already pinned in another slot, it is moved to the new slot automatically.</p>
 <hr />
-<h3 id="unpinning-a-contact">Unpinning a contact</h3>
-<p>Open the contact's DM, <strong>Hold Enter</strong> › context menu › <strong>Unpin (slot N)</strong>.</p>
+<h3 id="unpinning">Unpinning</h3>
+<p><strong>From the Favourites Dial</strong> — <strong>Hold Enter</strong> on the tile › <strong>Unpin</strong>.</p>
+<p><strong>From the Messages lists or Tools › Nodes</strong> — <strong>Hold Enter</strong> › context menu › <strong>Unpin (slot N)</strong>.</p>
+<hr />
+<h3 id="pinning-is-not-the-same-as-favouriting">Pinning is not the same as favouriting</h3>
+<p>A pinned tile and a <strong>Fav: ON</strong> entry are two independent things. Pinning puts something on this page. Favouriting marks it with a ★ and sorts it to the top of every list it appears in, and is what the <strong>Settings › Contacts</strong> list filters read. Either can be used without the other.</p>
 <hr />
 <h3 id="reordering-the-favourites-page">Reordering the Favourites page</h3>
 <p>The position of the Favourites Dial in the home page navigation sequence can be changed in <strong>Settings › Home Pages</strong> — press <strong>LEFT / RIGHT</strong> on the Favourites entry to move it earlier or later.</p>

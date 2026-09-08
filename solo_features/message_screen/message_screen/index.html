@@ -1851,7 +1851,7 @@
 </tbody>
 </table>
 <p>Messages appear as chat bubbles sized to their content — <strong>right</strong>-anchored for outgoing, <strong>left</strong> for incoming — with sender name and a compact age indicator (<code>3m</code>, <code>2h</code>, <code>&gt;1d</code>) in the top-right corner. List runs <strong>newest at the bottom</strong>; opening a history starts at the latest message, scrolling up goes further back.</p>
-<p><strong>Short Enter</strong> on a message opens it in fullscreen. <strong>Hold Enter</strong> — on a history row or in fullscreen — opens the same options menu: Reply, plus <strong>Navigate</strong> / <strong>Save waypoint</strong> when the message contains a location (see Fullscreen message view). You don't need to open the message first.</p>
+<p><strong>Short Enter</strong> on a message opens it in fullscreen. <strong>Hold Enter</strong> — on a history row or in fullscreen — opens the same options menu: Reply, plus <strong>Navigate</strong> / <strong>Save waypoint</strong> / <strong>Set as target</strong> when the message contains a location, and <strong>Path</strong> / <strong>Relayed by</strong> when hop data is available (see Fullscreen message view). You don't need to open the message first.</p>
 <hr />
 <h3 id="fullscreen-message-view">Fullscreen message view</h3>
 <table>
@@ -1884,15 +1884,25 @@
 </tr>
 </tbody>
 </table>
-<p><strong>Hold Enter</strong> in fullscreen opens the options menu. It always offers <strong>Reply</strong> for an incoming message, and when the message contains a <strong>location</strong> it adds two more:</p>
+<p><strong>Hold Enter</strong> in fullscreen opens the options menu. It always offers <strong>Reply</strong> for an incoming message, and when the message contains a <strong>location</strong> it adds three more:</p>
 <ul>
 <li><strong>Navigate</strong> — opens the bearing/distance view to those coordinates (the same two-bearing screen as Waypoints and Nearby; <strong>Back</strong> returns to the message).</li>
 <li><strong>Save waypoint</strong> — stores the location as a waypoint (visible on the trail map and in the Waypoints list).</li>
+<li><strong>Set as target</strong> — pins those coordinates as the active <strong>Locator/Nav target</strong> in one step, the same row Nodes and Waypoints offer (see Tools › Locator).</li>
 </ul>
 <p>A location is any <code>lat,lon</code> pair in the text — exactly what the <code>{loc}</code> placeholder inserts — so you can navigate to anything a contact shares. A <code>[WAY]lat,lon label</code> share also carries a name, used as the waypoint label. This works on DMs and channel messages, incoming or outgoing.</p>
+<p>When the entry has hop data recorded, the menu also adds one more row:</p>
+<ul>
+<li><strong>Path (N hops)</strong> — on a received message (DM or channel), lists every repeater the message actually travelled through to reach you, oldest hop first.</li>
+<li><strong>Relayed by (N)</strong> — on your own channel post instead, lists every distinct repeater heard rebroadcasting it back into the mesh (order isn't meaningful here — each one heard it independently, not as a chain).</li>
+</ul>
+<p>Selecting the row opens a read-only list of the resolved hops — each shown as the matching contact's name where one is known, or a short <code>?AABB</code>-style hex tag for an unrecognised repeater. Only repeaters within range of the message's actual travel — or, for <strong>Relayed by</strong>, within your own device's radio range — can ever be identified this way; a message with no recorded path (e.g. a zero-hop send, or one sent before any repeater relayed or echoed it) doesn't show this row at all.</p>
 <hr />
 <h3 id="context-menu-contact-list">Context menu — contact list</h3>
 <p><strong>Hold Enter</strong> on a contact entry opens a context menu:</p>
+<blockquote>
+<p>Rows that show a value (<code>Notif:</code>, <code>Melody:</code>, <code>Fav:</code>) are changed in place — <strong>LEFT/RIGHT</strong> steps the value and <strong>Enter</strong> advances it, with the menu staying open. Only <strong>Back</strong> closes the menu. The same rule holds in every context menu on the device.</p>
+</blockquote>
 <table>
 <thead>
 <tr>
@@ -1920,12 +1930,16 @@
 <td>Clears unread counter for this contact</td>
 </tr>
 <tr>
-<td>Notif: default / OFF / ON</td>
-<td>Per-contact notification override — <strong>LEFT/RIGHT</strong> to cycle</td>
+<td>Notif: Default / OFF / ON</td>
+<td>Per-contact notification override — <strong>LEFT/RIGHT</strong> or <strong>Enter</strong> to cycle</td>
 </tr>
 <tr>
-<td>Melody: global / M1 / M2</td>
-<td>Per-contact melody override — <strong>LEFT/RIGHT</strong> to cycle</td>
+<td>Melody: Global / M1 / M2</td>
+<td>Per-contact melody override — <strong>LEFT/RIGHT</strong> or <strong>Enter</strong> to cycle</td>
+</tr>
+<tr>
+<td>Fav: ON / OFF</td>
+<td>Mark this contact as a favourite — <strong>LEFT/RIGHT</strong> or <strong>Enter</strong> to toggle</td>
 </tr>
 <tr>
 <td>Pin to dial / Unpin (slot N)</td>
@@ -1933,6 +1947,7 @@
 </tr>
 </tbody>
 </table>
+<p><strong>Fav</strong> and <strong>Pin to dial</strong> are separate. <strong>Fav</strong> is the starred flag shared with the companion app: it marks the row with a ★, sorts it above the rest of the list (unless <strong>Settings › Contacts › Favs top</strong> is off), and drives the <code>DMs = Fav</code> list filter. <strong>Pin to dial</strong> puts the contact on the <a href="../../favourites_dial/favourites_dial/">Favourites Dial</a> page and changes nothing about the list.</p>
 <p>When <strong>Pin to dial</strong> is selected, a slot picker opens (Slot 1–6 showing current occupant name or "empty"). Choosing a slot that already holds another contact moves the new contact there.</p>
 <p>In the <strong>Rooms</strong> list the context menu instead offers:</p>
 <table>
@@ -1950,6 +1965,14 @@
 <tr>
 <td>Logout</td>
 <td>Only shown once logged in. Forgets the saved password so the next open prompts for one again</td>
+</tr>
+<tr>
+<td>Fav: ON / OFF</td>
+<td>Mark this room as a favourite — <strong>LEFT/RIGHT</strong> or <strong>Enter</strong> to toggle; drives the <strong>Rooms = Fav</strong> list filter</td>
+</tr>
+<tr>
+<td>Pin to dial / Unpin (slot N)</td>
+<td>Pin this room to a <a href="../../favourites_dial/favourites_dial/">Favourites Dial</a> slot</td>
 </tr>
 </tbody>
 </table>
@@ -1983,16 +2006,20 @@
 <td>Clears all unread for this channel</td>
 </tr>
 <tr>
-<td>Notif: default / OFF / ON</td>
-<td>Per-channel notification override — <strong>LEFT/RIGHT</strong> to cycle</td>
+<td>Notif: Default / OFF / ON</td>
+<td>Per-channel notification override — <strong>LEFT/RIGHT</strong> or <strong>Enter</strong> to cycle</td>
 </tr>
 <tr>
-<td>Melody: global / M1 / M2</td>
-<td>Per-channel melody override — <strong>LEFT/RIGHT</strong> to cycle</td>
+<td>Melody: Global / M1 / M2</td>
+<td>Per-channel melody override — <strong>LEFT/RIGHT</strong> or <strong>Enter</strong> to cycle</td>
 </tr>
 <tr>
-<td>Fav: yes / no</td>
-<td>Add or remove this channel from favourites — <strong>LEFT/RIGHT</strong> to toggle</td>
+<td>Fav: ON / OFF</td>
+<td>Add or remove this channel from favourites — <strong>LEFT/RIGHT</strong> or <strong>Enter</strong> to toggle</td>
+</tr>
+<tr>
+<td>Pin to dial / Unpin (slot N)</td>
+<td>Pin this channel to a <a href="../../favourites_dial/favourites_dial/">Favourites Dial</a> slot</td>
 </tr>
 <tr>
 <td>Edit</td>
@@ -2000,7 +2027,7 @@
 </tr>
 <tr>
 <td>Delete</td>
-<td>Removes the channel immediately (no confirm prompt)</td>
+<td>Removes the channel — confirms first (defaults to Cancel)</td>
 </tr>
 </tbody>
 </table>

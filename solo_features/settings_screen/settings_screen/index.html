@@ -1745,7 +1745,7 @@
 </tr>
 </tbody>
 </table>
-<p>All settings are saved to flash and restored on next boot. Settings are organised into collapsible sections. Press <strong>Enter</strong> on a section header to expand or collapse it — all sections start collapsed for faster navigation. Press <strong>LEFT/RIGHT</strong> to change a value, or <strong>Enter</strong> for toggle items.</p>
+<p>All settings are saved to flash and restored on next boot. Settings are organised into collapsible sections. Press <strong>Enter</strong> on a section header to expand or collapse it — all sections start collapsed for faster navigation. Press <strong>LEFT/RIGHT</strong> to change a value. <strong>Enter</strong> advances any row whose options wrap around — toggles, melodies, and option lists like Auto-off. Rows that ramp between fixed ends (Brightness, Volume, TX Pwr, Timezone, SF / BW / CR) are LEFT/RIGHT only, since there is nothing to wrap to.</p>
 <p>Press <strong>Cancel/Back</strong> to save and return to the home screen.</p>
 <hr />
 <h3 id="display">Display</h3>
@@ -1766,7 +1766,7 @@
 <tr>
 <td>Auto-off</td>
 <td>5 s / 15 s / 30 s / 60 s / never</td>
-<td>LEFT/RIGHT</td>
+<td>LEFT/RIGHT, or <strong>Enter</strong> to advance</td>
 </tr>
 <tr>
 <td>Auto-lock</td>
@@ -1846,6 +1846,11 @@
 <td>All / Zero-hop</td>
 <td>Filters the AD sound so it plays for every advert or only for local zero-hop adverts.</td>
 </tr>
+<tr>
+<td>Msg wake</td>
+<td>ON / OFF</td>
+<td>Whether an incoming message turns the display back on when it was off and no phone/app is connected (default ON — today's behaviour either way).</td>
+</tr>
 </tbody>
 </table>
 <p>Melody 1 and Melody 2 are custom sequences editable in <strong>Tools › Ringtone Editor</strong>.</p>
@@ -1890,7 +1895,7 @@
 <tr>
 <td>Preset</td>
 <td>named presets</td>
-<td>LEFT/RIGHT cycles community RF presets (region frequency + bandwidth/SF/CR). <strong>Enter</strong> opens a popup to pick one, save the current settings as a named preset, or delete a saved one. Applies frequency, bandwidth, SF and CR together.</td>
+<td>LEFT/RIGHT cycles community RF presets (region frequency + bandwidth/SF/CR). <strong>Enter</strong> opens a popup to pick one, save the current settings as a named preset, or delete a saved one — deleting confirms first (defaults to Cancel). Applies frequency, bandwidth, SF and CR together.</td>
 </tr>
 <tr>
 <td>Freq</td>
@@ -2022,7 +2027,7 @@
 </tr>
 </tbody>
 </table>
-<p>Applies to every on-screen text field (messages, waypoint labels, room passwords, preset names). Earlier releases labelled the grid <em>QWERTY</em>; the layout has always been alphabetical, so it is now named <strong>ABC</strong>.</p>
+<p>Applies to every on-screen text field (messages, waypoint labels, room passwords, preset names).</p>
 <p>European Latin-diacritic letters (Polish, Czech, Slovak, German, French, Spanish, Portuguese, Nordic, etc.) aren't separate alphabet pages — instead, <strong>Hold Enter</strong> on a plain Latin letter that has accented variants (<code>a c d e i l n o r s t u y z</code>) opens a one-row popup of its accents (e.g. holding <code>a</code> offers <code>á à â ã ä å ą</code>); <strong>LEFT/RIGHT</strong> picks, <strong>Enter</strong> inserts it, <strong>Cancel</strong> dismisses with no change. Holding a letter with no accented variants (e.g. <code>b</code>) does nothing. Works on whichever page is currently showing Latin, whether that's Main or Additional.</p>
 <hr />
 <h3 id="contacts">Contacts</h3>
@@ -2037,21 +2042,28 @@
 <tbody>
 <tr>
 <td>DMs</td>
-<td>all / favourites</td>
-<td>Show all chat contacts or only upstream-starred ones</td>
+<td>All / Fav</td>
+<td>Show all chat contacts or only favourited ones</td>
 </tr>
 <tr>
 <td>Channels</td>
-<td>all / favourites</td>
+<td>All / Fav</td>
 <td>Show all channels or only favourited ones</td>
 </tr>
 <tr>
 <td>Rooms</td>
-<td>all / favourites</td>
+<td>All / Fav</td>
 <td>Show all room servers or only favourited ones</td>
+</tr>
+<tr>
+<td>Favs top</td>
+<td>ON / OFF</td>
+<td>Sort favourites to the top of every list (default ON)</td>
 </tr>
 </tbody>
 </table>
+<p>Favourites are set per item in its context menu (<strong>Hold Enter</strong> › <strong>Fav: ON / OFF</strong>) — see <a href="../../message_screen/message_screen/">Message Screen</a>, and the same row exists in Tools › Nodes. A contact's or room's favourite flag is the same one the companion app shows as a starred contact, so it syncs both ways; a channel's is device-only.</p>
+<p>A favourite is marked with a ★ on its row wherever it is listed, and — unless <strong>Favs top</strong> is off — sorted above everything else. The three filters above are independent of that: they control what's <em>listed at all</em>, the sort only controls the order.</p>
 <hr />
 <h3 id="messages">Messages</h3>
 <table>
