@@ -228,6 +228,22 @@ public:
   // Seq of the most recently tracked channel send — the UI records it on the
   // outgoing history entry so a heard echo (onChannelRelayed) can match it back.
   uint32_t lastChannelRelaySeq() const { return _last_relay_seq; }
+
+  // Mirror a channel post this device just originated (sendGroupMessage
+  // already succeeded) into the on-device history AND arm its "Relayed by"
+  // tracker in one call -- every caller (CMD_SEND_CHANNEL_TXT_MSG, the three
+  // Remote Bot reply/command/locfix paths) needs both, always in this order,
+  // and a caller that adds the history entry without arming the tracker
+  // right after (an easy line to forget) silently never shows repeater
+  // confirmations for that message. sendGroupMessage's sendFloodScoped(
+  // GroupChannel&, ...) already calls trackRelaySend() unconditionally, so
+  // lastChannelRelaySeq() is already the seq for the send just made.
+  int mirrorOwnChannelMsg(uint8_t channel_idx, const char* text, int text_len = -1, uint32_t timestamp = 0) {
+    if (!_ui) return -1;
+    int pos = _ui->addOwnChannelMsg(channel_idx, text, text_len, timestamp);
+    if (pos >= 0) _ui->armChannelRelay(pos, lastChannelRelaySeq());
+    return pos;
+  }
 private:
 
   // DataStoreHost methods

@@ -2039,19 +2039,11 @@ void MyMesh::handleCmdFrame(size_t len) {
         // so it must never bump the channel's unread badge even though the
         // device's own UI isn't necessarily showing this channel right now
         // (unlike an on-device compose, which is always looking at the
-        // channel it just sent to).
-        if (_ui) {
-          int tlen = len - i;
-          if (tlen > MAX_TEXT_LEN) tlen = MAX_TEXT_LEN;
-          int pos = _ui->addOwnChannelMsg(channel_idx, text, tlen, msg_timestamp);
-          // Same "relayed into mesh" marker an on-device channel send arms (see
-          // MessagesScreen::afterSend): sendGroupMessage above already went
-          // through sendFloodScoped(GroupChannel&, ...), which calls
-          // trackRelaySend() unconditionally, so lastChannelRelaySeq() is
-          // already the seq for the send that was just made -- this just
-          // attaches it to the matching history entry.
-          if (pos >= 0) _ui->armChannelRelay(pos, lastChannelRelaySeq());
-        }
+        // channel it just sent to). mirrorOwnChannelMsg also arms the
+        // "Relayed by" tracker on the new entry -- see its own comment.
+        int tlen = len - i;
+        if (tlen > MAX_TEXT_LEN) tlen = MAX_TEXT_LEN;
+        mirrorOwnChannelMsg(channel_idx, text, tlen, msg_timestamp);
 #endif
       } else {
         writeErrFrame(ERR_CODE_NOT_FOUND); // bad channel_idx

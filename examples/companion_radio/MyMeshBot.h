@@ -199,7 +199,7 @@ void MyMesh::tryBotReplyChannel(uint8_t channel_idx, const char* text, uint8_t h
     _bot_last_ch_reply_ms = millis();
     _bot_reply_count++;
 #ifdef DISPLAY_CLASS
-    if (_ui) _ui->addOwnChannelMsg(channel_idx, expanded);
+    mirrorOwnChannelMsg(channel_idx, expanded);
 #endif
   }
 }
@@ -492,7 +492,7 @@ bool MyMesh::tryBotChannelCommand(uint8_t channel_idx, const char* text, uint8_t
     _bot_last_ch_reply_ms = millis();
     _bot_reply_count++;
 #ifdef DISPLAY_CLASS
-    if (_ui) _ui->addOwnChannelMsg(channel_idx, out);
+    mirrorOwnChannelMsg(channel_idx, out);
 #endif
     if (_locfix_requested) startLocFix(LOCFIX_DEST_CHANNEL, nullptr, channel_idx);
     applyPendingBotActions();
@@ -647,7 +647,7 @@ void MyMesh::sendLocFixResult(const char* msg) {
       _bot_last_ch_reply_ms = millis();
       _bot_reply_count++;
 #ifdef DISPLAY_CLASS
-      if (_ui) _ui->addOwnChannelMsg(_loc_fix.channel_idx, msg);
+      mirrorOwnChannelMsg(_loc_fix.channel_idx, msg);
 #endif
     }
   } else {   // LOCFIX_DEST_CONTACT -- DM or room, both go through sendMessage
