@@ -92,8 +92,7 @@ public:
         break;
       case K_RADIUS: {
         uint16_t r = NodePrefs::locatorRadiusMeters(_prefs ? _prefs->locator_radius_idx : 1);
-        if (r < 1000) snprintf(buf, n, "%um", (unsigned)r);
-        else          snprintf(buf, n, "%.1fkm", r / 1000.0f);
+        geo::fmtDist(buf, n, r / 1000.0f, _task && _task->useImperial());
         break;
       }
       case K_MODE:

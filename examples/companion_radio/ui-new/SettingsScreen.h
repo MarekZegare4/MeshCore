@@ -35,6 +35,7 @@ class SettingsScreen : public UIScreen {
 #if FEAT_FULL_REFRESH_SETTING
     EINK_FULL_REFRESH,
 #endif
+    MSG_WAKE,
     // Sound section
     SECTION_SOUND,
     BUZZER,
@@ -43,7 +44,6 @@ class SettingsScreen : public UIScreen {
     CH_MELODY,
     AD_SOUND,
     AD_SOUND_SCOPE,
-    MSG_WAKE,
     // Home pages section
     SECTION_HOME_PAGES,
     HOME_CLOCK, HOME_FAVOURITES, HOME_RADIO, HOME_BT, HOME_ADVERT,

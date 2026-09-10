@@ -299,7 +299,15 @@ static int drawClockTime(DisplayDriver& d, int top_y, const struct tm* ti,
 // ── HomeScreen ────────────────────────────────────────────────────────────────
 // Forward declaration to be able to call formatDashVal from HomeScreen::render()
 static void formatDashVal(uint8_t field, char* val, int val_len, uint16_t batt_mv,
-                          uint16_t low_batt_mv, int unread, CayenneLPP* lpp = nullptr);
+                          uint16_t low_batt_mv, int unread, bool imperial, CayenneLPP* lpp = nullptr);
+
+// Altitude (baro or GPS) respects Settings > System > Units, same as every
+// other distance in the UI -- unlike geo::fmtDist, never switches to km/mi
+// regardless of magnitude, since altitude is always discussed in the small unit.
+static void fmtAlt(char* buf, int n, float meters, bool imperial) {
+  if (imperial) snprintf(buf, n, "%.0fft", meters * 3.28084f);
+  else          snprintf(buf, n, "%.0fm", meters);
+}
 
 class HomeScreen : public UIScreen {
   enum HomePage {
@@ -900,6 +908,17 @@ public:
 #else
               strcpy(val, "--");
 #endif
+            } else if (field == DASH_ALT_GPS) {
+              strcpy(label, "AltG");
+#if ENV_INCLUDE_GPS == 1
+              LocationProvider* loc = sensors.getLocationProvider();
+              if (loc && loc->isValid())
+                fmtAlt(val, sizeof(val), loc->getAltitude() / 1000.0f, _node_prefs && _node_prefs->units_imperial);
+              else
+                strcpy(val, "no fix");
+#else
+              strcpy(val, "--");
+#endif
             } else if (field == DASH_NODES) {
               strcpy(label, "Nodes");
               snprintf(val, sizeof(val), "%d", the_mesh.getNumContacts());
@@ -927,7 +946,7 @@ public:
                       case LPP_TEMPERATURE:         r.readTemperature(v);      snprintf(val, sizeof(val), "%.1f\xf8""C", v); break;
                       case LPP_RELATIVE_HUMIDITY:   r.readRelativeHumidity(v); snprintf(val, sizeof(val), "%.0f%%", v);      break;
                       case LPP_BAROMETRIC_PRESSURE: r.readPressure(v);         snprintf(val, sizeof(val), "%.0fhPa", v);     break;
-                      case LPP_ALTITUDE:            r.readAltitude(v);         snprintf(val, sizeof(val), "%.0fm", v);       break;
+                      case LPP_ALTITUDE:            r.readAltitude(v);         fmtAlt(val, sizeof(val), v, _node_prefs && _node_prefs->units_imperial); break;
                       case LPP_LUMINOSITY:          r.readLuminosity(v);       snprintf(val, sizeof(val), "%.0flux", v);     break;
                       case LPP_CONCENTRATION:       r.readConcentration(v);    snprintf(val, sizeof(val), "%.0fppm", v);     break;
                     }
@@ -986,8 +1005,8 @@ public:
           int unread = (f0 == DASH_MSGS || f1 == DASH_MSGS)
                      ? _task->getDMUnreadTotal() + _task->getChannelUnreadCount() + _task->getRoomUnreadCount() : 0;
           uint16_t batt_mv = _task->getBattMilliVolts();
-          formatDashVal(f0, v0, sizeof(v0), batt_mv, _node_prefs->low_batt_mv, unread, lpp_ptr);
-          formatDashVal(f1, v1, sizeof(v1), batt_mv, _node_prefs->low_batt_mv, unread, lpp_ptr);
+          formatDashVal(f0, v0, sizeof(v0), batt_mv, _node_prefs->low_batt_mv, unread, _node_prefs->units_imperial, lpp_ptr);
+          formatDashVal(f1, v1, sizeof(v1), batt_mv, _node_prefs->low_batt_mv, unread, _node_prefs->units_imperial, lpp_ptr);
           if (v0[0] || v1[0]) {
             int sv_y = date_y + step;
             display.setColor(DisplayDriver::LIGHT);
@@ -1039,11 +1058,12 @@ public:
       snprintf(tmp, sizeof(tmp),"TX: %ddBm", radio_driver.getTxPower());   // live value (reflects APC)
       display.print(tmp);
       display.setCursor(0, content_y + step * 3);
-      if (radio_driver.getPowerSaving()) {   // duty-cycle RX doesn't sample the floor
-        snprintf(tmp, sizeof(tmp),"Noise floor: n/a");
-      } else {
-        snprintf(tmp, sizeof(tmp),"Noise floor: %d", radio_driver.getNoiseFloor());
-      }
+      // Was gated to "n/a" while duty-cycle RX (Pwr save) was active, on the
+      // assumption that the floor only gets sampled during continuous RX --
+      // stale since RadioLibWrapper's periodic recalibration (noiseFloorCalibCheck(),
+      // NF_CALIB_INTERVAL_MS) started keeping it fresh even under duty-cycle,
+      // same live value Diagnostics already showed unconditionally.
+      snprintf(tmp, sizeof(tmp),"Noise floor: %d", radio_driver.getNoiseFloor());
       display.print(tmp);
     } else if (_page == HomePage::BLUETOOTH) {
       display.setColor(DisplayDriver::LIGHT);
@@ -1105,7 +1125,7 @@ public:
         display.drawTextRightAlign(display.width()-1, y, buf);
         y += step;
         display.drawTextLeftAlign(0, y, "alt");
-        snprintf(buf, sizeof(buf),"%.2f", nmea->getAltitude()/1000.);
+        fmtAlt(buf, sizeof(buf), nmea->getAltitude() / 1000.0f, _node_prefs && _node_prefs->units_imperial);
         display.drawTextRightAlign(display.width()-1, y, buf);
         y += step;
       }
@@ -2240,7 +2260,7 @@ bool UITask::isButtonPressed() const {
 }
 
 static void formatDashVal(uint8_t field, char* val, int val_len, uint16_t batt_mv,
-                          uint16_t low_batt_mv, int unread, CayenneLPP* lpp) {
+                          uint16_t low_batt_mv, int unread, bool imperial, CayenneLPP* lpp) {
   val[0] = '\0';
   switch (field) {
     case DASH_NONE: return;
@@ -2273,8 +2293,16 @@ static void formatDashVal(uint8_t field, char* val, int val_len, uint16_t batt_m
       else     strcpy(val, "--");
       return;
     }
+    case DASH_ALT_GPS: {
+      LocationProvider* loc = sensors.getLocationProvider();
+      if (loc && loc->isValid())
+        fmtAlt(val, val_len, loc->getAltitude() / 1000.0f, imperial);
+      else strcpy(val, "no fix");
+      return;
+    }
 #else
     case DASH_SATS:
+    case DASH_ALT_GPS:
       strcpy(val, "--");
       return;
 #endif
@@ -2301,7 +2329,7 @@ static void formatDashVal(uint8_t field, char* val, int val_len, uint16_t batt_m
           case LPP_TEMPERATURE:         r.readTemperature(v);      snprintf(val, val_len, "%.1f\xf8""C", v); return;
           case LPP_RELATIVE_HUMIDITY:   r.readRelativeHumidity(v); snprintf(val, val_len, "%.0f%%", v);      return;
           case LPP_BAROMETRIC_PRESSURE: r.readPressure(v);         snprintf(val, val_len, "%.0fhPa", v);     return;
-          case LPP_ALTITUDE:            r.readAltitude(v);         snprintf(val, val_len, "%.0fm", v);       return;
+          case LPP_ALTITUDE:            r.readAltitude(v);         fmtAlt(val, val_len, v, imperial);        return;
           case LPP_LUMINOSITY:          r.readLuminosity(v);       snprintf(val, val_len, "%.0flux", v);     return;
           case LPP_CONCENTRATION:       r.readConcentration(v);    snprintf(val, val_len, "%.0fppm", v);     return;
         }

@@ -27,6 +27,7 @@ Press **Cancel/Back** to save and return to the home screen.
 | Display rotation _(e-ink only)_      | 0° / 90° / 180° / 270°           | Applied immediately                                                                                   |
 | Joystick rotation _(e-ink only)_     | 0° / 90° / 180° / 270°           | Rotates input mapping independently of display rotation; useful for custom enclosures                 |
 | Full refresh interval _(e-ink only)_ | OFF / 5 / 10 / 20 / 30           | Partial refreshes between full clears; reduces ghosting on long sessions                              |
+| Msg wake                             | ON / OFF                         | Whether an incoming message turns the display back on when it was off and no phone/app is connected (default ON — today's behaviour either way). |
 
 ---
 
@@ -40,7 +41,6 @@ Press **Cancel/Back** to save and return to the home screen.
 | Channel Melody | built-in / Melody 1 / Melody 2 / None | Notification sound for incoming channel messages. `None` disables the sound for this event. |
 | AD sound       | built-in / Melody 1 / Melody 2 / None | Sound played whenever an **advert** is received from *any* node — pairs with Auto-Advert as an audible "in range" heartbeat (see Tools › Auto-Advert). `None` disables the sound for this event. |
 | AD scope       | All / Zero-hop                | Filters the AD sound so it plays for every advert or only for local zero-hop adverts. |
-| Msg wake       | ON / OFF                       | Whether an incoming message turns the display back on when it was off and no phone/app is connected (default ON — today's behaviour either way). |
 
 Melody 1 and Melody 2 are custom sequences editable in **Tools › Ringtone Editor**.
 

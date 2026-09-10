@@ -16,7 +16,8 @@ static const uint8_t DASH_NODES   = 9;
 static const uint8_t DASH_MSGS    = 10;
 static const uint8_t DASH_BATT_PCT = 11;
 static const uint8_t DASH_SATS    = 12;
-static const uint8_t DASH_COUNT   = 13;
+static const uint8_t DASH_ALT_GPS = 13;
+static const uint8_t DASH_COUNT   = 14;
 
 class DashboardConfigScreen : public UIScreen {
   UITask*    _task;
@@ -81,5 +82,6 @@ public:
 
 const char* DashboardConfigScreen::OPTION_NAMES[DASH_COUNT] = {
   "None", "Batt V", "Temp", "Humidity", "Pressure",
-  "GPS", "Altitude", "Lux", "CO2", "Contacts", "Messages", "Batt %", "Sats"
+  "GPS", "Altitude (Baro)", "Lux", "CO2", "Contacts", "Messages", "Batt %", "Sats",
+  "Altitude (GPS)"
 };

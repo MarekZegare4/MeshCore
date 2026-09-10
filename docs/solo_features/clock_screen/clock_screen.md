@@ -40,12 +40,13 @@ Up to three data fields are shown below the date separator. Each field displays 
 | Humidity    | Hum   | % from onboard sensor                                                     |
 | Pressure    | Pres  | hPa from onboard sensor                                                   |
 | GPS         | GPS   | `lat lon` decimal degrees, or `no fix`                                    |
-| Altitude    | Alt   | metres from onboard sensor (GPS or barometric)                            |
+| Altitude (Baro) | Alt | metres/feet (per Settings › System › Units) from onboard barometric sensor (`--` without one) |
 | Luminosity  | Lux   | lux from onboard sensor                                                   |
 | CO₂         | CO2   | ppm from onboard sensor                                                   |
 | Contacts    | Nodes | Total contacts in the mesh                                                |
 | Messages    | Msgs  | Total unread message count                                                |
 | Satellites  | Sats  | GPS satellite count (or `--` without GPS)                                 |
+| Altitude (GPS) | AltG | metres/feet (per Settings › System › Units) from the GPS fix (or `no fix`) |
 
 Sensor fields show `--` when the sensor is not connected or has no data.
 
