@@ -2304,6 +2304,12 @@ public:
           _dm_hist_sel++;
           if (_dm_hist_sel >= _dm_hist_scroll + _hist_visible)
             _dm_hist_scroll = _dm_hist_sel - _hist_visible + 1;
+        } else if (_dm_hist_sel == dm_count - 1) {
+          // Oldest (top of the list) -> wrap to the compose row, the list's
+          // own bottom-most stop -- same ring-wrap every other list in the UI
+          // does at its ends, just closing the loop through the compose row
+          // instead of straight back to index 0.
+          _dm_hist_sel = -1;
         }
         return true;
       }
@@ -2313,6 +2319,10 @@ public:
           if (_dm_hist_sel < _dm_hist_scroll) _dm_hist_scroll = _dm_hist_sel;
         } else if (_dm_hist_sel == 0) {
           _dm_hist_sel = -1;
+        } else if (_dm_hist_sel == -1 && dm_count > 0) {
+          // Compose row -> wrap to the oldest message (top of the list).
+          _dm_hist_sel = dm_count - 1;
+          _dm_hist_scroll = (dm_count > _hist_visible) ? dm_count - _hist_visible : 0;
         }
         return true;
       }
@@ -2388,6 +2398,9 @@ public:
         else if (_hist_sel >= 0 && _hist_sel < ch_hist_count - 1) {
           _hist_sel++;
           if (_hist_sel >= _hist_scroll + _hist_visible) _hist_scroll = _hist_sel - _hist_visible + 1;
+        } else if (_hist_sel == ch_hist_count - 1) {
+          // Oldest -> wrap to the compose row, same as the DM history handler.
+          _hist_sel = -1;
         }
         updateChannelUnread();
         return true;
@@ -2395,6 +2408,11 @@ public:
       if (c == KEY_DOWN) {
         if (_hist_sel > 0) { _hist_sel--; if (_hist_sel < _hist_scroll) _hist_scroll = _hist_sel; }
         else if (_hist_sel == 0) _hist_sel = -1;
+        else if (_hist_sel == -1 && ch_hist_count > 0) {
+          // Compose row -> wrap to the oldest message.
+          _hist_sel = ch_hist_count - 1;
+          _hist_scroll = (ch_hist_count > _hist_visible) ? ch_hist_count - _hist_visible : 0;
+        }
         updateChannelUnread();
         return true;
       }
