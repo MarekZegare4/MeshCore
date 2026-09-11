@@ -63,11 +63,17 @@ static inline void fmtDist(char* buf, int n, float km, bool imperial) {
 
 // Compact age tag for a timestamp, e.g. "12s" / "5m" / "3h" / "2d" — sized to
 // sit inline after a name (unlike a full "X ago" sentence). Empty string for
-// an unknown (0) or future timestamp. Takes `now` rather than reading the RTC
-// itself, so this stays a pure function like the rest of this file.
+// a genuinely unknown (0) timestamp (callers like NearbyScreen::fmtAge() rely
+// on this to show "unknown" for a contact never actually heard from, which a
+// clamped "0s ago" would misreport as just-seen). A timestamp slightly ahead
+// of `now` (sender/receiver clock skew -- e.g. an incoming message whose
+// sender's clock runs a little fast, or ours hasn't synced yet) clamps to
+// "0s" instead of going blank, since it did just arrive. Takes `now` rather
+// than reading the RTC itself, so this stays a pure function like the rest
+// of this file.
 static inline void fmtAgeShort(char* buf, int n, uint32_t now, uint32_t lastmod) {
-  if (lastmod == 0 || now < lastmod) { buf[0] = '\0'; return; }
-  uint32_t age = now - lastmod;
+  if (lastmod == 0) { buf[0] = '\0'; return; }
+  uint32_t age = (now > lastmod) ? (now - lastmod) : 0;
   if      (age < 60)    snprintf(buf, n, "%us", (unsigned)age);
   else if (age < 3600)  snprintf(buf, n, "%um", (unsigned)(age / 60));
   else if (age < 86400) snprintf(buf, n, "%uh", (unsigned)(age / 3600));

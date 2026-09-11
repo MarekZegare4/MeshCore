@@ -460,19 +460,24 @@ class MessagesScreen : public UIScreen {
   }
 
   // Selection frame for one history message box, shared by the DM/room and
-  // channel history lists. Selected = solid fill; unselected = outline with a
-  // filled header strip. Leaves the ink DARK (for the sender row drawn next).
+  // channel history lists. Selected = solid fill, dark text (the same
+  // drawSelectionRow() convention every other list in the UI uses). Unselected
+  // = plain black box (like the rest of the UI) with a thin light frame
+  // separating it from its neighbours -- no filled header strip, which used
+  // to leave a patch of light background on every bubble whether selected or
+  // not, unlike anywhere else in the UI. Leaves the ink colour set correctly
+  // for the sender row drawn next (and everything after it, until something
+  // else changes it): LIGHT for the whole unselected box, DARK for selected.
   // Spans exactly [box_x, box_x+box_w) — the caller sizes/positions the bubble
   // (see computeBubbleBox below), this just draws whatever box it's given.
   static void drawHistRowFrame(DisplayDriver& d, int box_x, int box_w, int y, int bh, int lh, bool sel) {
     d.setColor(DisplayDriver::LIGHT);
     if (sel) {
       d.fillRect(box_x, y, box_w, bh);
+      d.setColor(DisplayDriver::DARK);
     } else {
       d.drawRect(box_x, y, box_w, bh);
-      d.fillRect(box_x + 1, y + 1, box_w - 2, lh);
     }
-    d.setColor(DisplayDriver::DARK);
   }
 
   // Width of an ack/delivery glyph (see drawAckGlyph) — needed up front to size
@@ -1560,14 +1565,23 @@ public:
         const char* body = skipReplyPrefix(dmDisplayParts(e, is_room, filtered_name, sender_buf, sizeof(sender_buf)));
         const char* sender = sender_buf;
 
-        char age[6]; geo::fmtAgeShort(age, sizeof(age), now_ts, e.timestamp);
+        // e.timestamp==0 shouldn't happen (storeDMMsg() falls back to receipt
+        // time at write time), but if it ever does, show the receipt time
+        // (now_ts) rather than leave the row with no age at all.
+        char age[6]; geo::fmtAgeShort(age, sizeof(age), now_ts, e.timestamp ? e.timestamp : now_ts);
         int age_w = age[0] ? display.getTextWidth(age) + 3 : 0;
 
         // Size the bubble to its own content before drawing anything (see
         // computeBubbleBox): the header (sender+ack+age) vs the body, measured
         // once here and reused below instead of re-wrapping.
         int full_avail = display.width() - reserve;
-        int ack_w = e.outgoing ? (3 + ackGlyphWidth(display, _history.dmEffectiveStatus(e), e.attempt + 1)) : 0;
+        // Incoming: the hop count the DM actually took to reach us, shown as
+        // the same tiny digit icon an outgoing send uses for its relay/echo
+        // count -- no ack glyph exists for incoming (there's nothing to
+        // deliver), so this slot is otherwise empty.
+        int in_hop_count = !e.outgoing ? (e.path_len & 63) : 0;
+        int ack_w = e.outgoing ? (3 + ackGlyphWidth(display, _history.dmEffectiveStatus(e), e.attempt + 1))
+                  : (in_hop_count > 0 ? (3 + miniIconNumberWidth(display, in_hop_count)) : 0);
         int header_w = 3 + display.getTextWidth(sender) + ack_w + age_w + 3;
         int body_w, nl = 0;
         if (portrait_expand) {
@@ -1590,9 +1604,13 @@ public:
         if (e.outgoing) {                       // delivery marker after "Me"
           int gx = box.x + 3 + display.getTextWidth(sender) + 3;
           drawAckGlyph(display, gx, y + 1, _history.dmEffectiveStatus(e), e.attempt + 1);
+        } else if (in_hop_count > 0) {          // hop count after the sender name
+          int gx = box.x + 3 + display.getTextWidth(sender) + 3;
+          miniIconDrawNumber(display, gx, y + 1, in_hop_count);
         }
         if (age[0]) { display.setCursor(box.x + box.w - age_w, y + 1); display.print(age); }
-        if (!sel) display.setColor(DisplayDriver::LIGHT);
+        // Ink is already LIGHT (unselected) or DARK (selected) from
+        // drawHistRowFrame above, and nothing since has changed it.
         if (portrait_expand) {
           for (int li = 0; li < nl; li++) { display.setCursor(box.x + 3, y + (li + 1) * lh + 1); display.print(s_wrap_lines[li]); }
         } else {
@@ -1751,7 +1769,11 @@ public:
           msg_part[sizeof(msg_part) - 1] = '\0';
         }
 
-        char age[6]; geo::fmtAgeShort(age, sizeof(age), now_ts, _history.chAtPos(ring_pos).timestamp);
+        // See the DM history block above: 0 shouldn't happen (addChannelMsg()
+        // also falls back to receipt time at write time), but fall back to
+        // now_ts here too rather than leave the row with no age at all.
+        uint32_t ch_ts = _history.chAtPos(ring_pos).timestamp;
+        char age[6]; geo::fmtAgeShort(age, sizeof(age), now_ts, ch_ts ? ch_ts : now_ts);
         int age_w = age[0] ? display.getTextWidth(age) + 3 : 0;
         const char* body = skipReplyPrefix(msg_part);
 
@@ -1763,8 +1785,12 @@ public:
         bool outgoing = strcmp(sender, "Me") == 0;
         bool show_ack = outgoing && _history.chAtPos(ring_pos).relay_status == ACK_OK;
         int relay_count = show_ack ? (_history.chAtPos(ring_pos).path_len & 63) : 0;
+        // Incoming: the hop count this post actually took to reach us, shown
+        // the same way an outgoing post's repeater-echo count is.
+        int in_hop_count = !outgoing ? (_history.chAtPos(ring_pos).path_len & 63) : 0;
         int full_avail = display.width() - reserve;
-        int ack_w = show_ack ? (3 + ackGlyphWidth(display, ACK_OK, 1, relay_count)) : 0;
+        int ack_w = show_ack ? (3 + ackGlyphWidth(display, ACK_OK, 1, relay_count))
+                  : (in_hop_count > 0 ? (3 + miniIconNumberWidth(display, in_hop_count)) : 0);
         int header_w = 3 + display.getTextWidth(sender) + ack_w + age_w + 3;
         int body_w, nl = 0;
         if (portrait_expand) {
@@ -1785,9 +1811,13 @@ public:
         if (show_ack) {
           int gx = box.x + 3 + display.getTextWidth(sender) + 3;
           drawAckGlyph(display, gx, y + 1, ACK_OK, 1, relay_count);
+        } else if (in_hop_count > 0) {
+          int gx = box.x + 3 + display.getTextWidth(sender) + 3;
+          miniIconDrawNumber(display, gx, y + 1, in_hop_count);
         }
         if (age[0]) { display.setCursor(box.x + box.w - age_w, y + 1); display.print(age); }
-        if (!sel) display.setColor(DisplayDriver::LIGHT);
+        // Ink is already LIGHT (unselected) or DARK (selected) from
+        // drawHistRowFrame above, and nothing since has changed it.
         if (portrait_expand) {
           for (int li = 0; li < nl; li++) { display.setCursor(box.x + 3, y + (li + 1) * lh + 1); display.print(s_wrap_lines[li]); }
         } else {
@@ -2305,11 +2335,12 @@ public:
           if (_dm_hist_sel >= _dm_hist_scroll + _hist_visible)
             _dm_hist_scroll = _dm_hist_sel - _hist_visible + 1;
         } else if (_dm_hist_sel == dm_count - 1) {
-          // Oldest (top of the list) -> wrap to the compose row, the list's
-          // own bottom-most stop -- same ring-wrap every other list in the UI
-          // does at its ends, just closing the loop through the compose row
-          // instead of straight back to index 0.
-          _dm_hist_sel = -1;
+          // Oldest (top of the list) -> wrap straight to the newest (bottom
+          // of the list), same ring-wrap every other list in the UI does at
+          // its ends -- the compose row sits below the list itself and is
+          // not part of this wrap.
+          _dm_hist_sel = 0;
+          _dm_hist_scroll = 0;
         }
         return true;
       }
@@ -2399,8 +2430,9 @@ public:
           _hist_sel++;
           if (_hist_sel >= _hist_scroll + _hist_visible) _hist_scroll = _hist_sel - _hist_visible + 1;
         } else if (_hist_sel == ch_hist_count - 1) {
-          // Oldest -> wrap to the compose row, same as the DM history handler.
-          _hist_sel = -1;
+          // Oldest -> wrap straight to the newest, same as the DM history handler.
+          _hist_sel = 0;
+          _hist_scroll = 0;
         }
         updateChannelUnread();
         return true;

@@ -1,3 +1,23 @@
+## MeshCore Solo Companion Firmware v1.28
+
+### What's new
+
+- **The Clock/Lock dashboard gets a separate "Altitude (GPS)" field**, alongside the existing barometric one (now labelled "Altitude (Baro)") — the original single Altitude field only ever read a barometric sensor's telemetry, showing `--` on any board without one even with a perfectly good GPS fix.
+- **Received messages now show how many hops they actually took to reach you**, right in the message list — the same tiny digit-icon a sent message already uses for its repeater/echo count, now shown for incoming DMs and channel posts too, using the hop path the mesh already records for them.
+
+### Fixes
+
+- **Every altitude reading (baro + GPS, Clock and Lock screen) and the GPS home page's "alt" row now respect Settings › System › Units**, same as every other distance in the UI — none of them checked metric/imperial before. Locator's Radius row had the same gap and is fixed the same way.
+- **The Radio home page's noise floor showed "n/a" whenever Pwr save (RX duty-cycle) was on**, on the assumption duty-cycle RX can't sample it. That's stale — the radio already recalibrates it periodically even under duty-cycle, which is why Diagnostics' own reading was already showing something real. Radio home page now matches.
+- **"Msg wake" moved from Settings › Sound to Settings › Display** — a more logical home for a display-wake toggle than notifications. Menu order only; the setting itself is unaffected.
+- **Remote Bot's channel replies (trigger reply, channel command reply, `!gps` fix result) never showed which repeaters echoed them back**, unlike every other way of posting to a channel. Bot-originated posts now arm the same relay tracking an app or on-device send already gets.
+- **Creating a new message channel didn't refresh the channel list until leaving and re-entering the screen.** Contributed by @3urobeat.
+- **The DM and channel history lists didn't wrap at their ends like every other list in the UI.** UP at the oldest message now wraps straight to the newest, and DOWN past the newest wraps to the compose row and back to the oldest, closing the loop both ways.
+- **Unselected message bubbles had a stray light-filled header strip behind the sender name**, the one place in the UI with a filled patch on an otherwise plain row. Unselected bubbles are now plain (matching every other unselected row); the selected fill is unchanged.
+- **A received message could show no time at all — just the sender name and hop count** — whenever its timestamp read slightly ahead of the device's own clock (sender/receiver clock skew, or the receiver's clock not synced yet) or was genuinely unknown. Both cases now show the receipt time instead of going blank.
+
+---
+
 ## MeshCore Solo Companion Firmware v1.27
 
 ### What's new
