@@ -3306,6 +3306,10 @@ void UITask::onChannelRemoved(uint8_t channel_idx) {
     _node_prefs->ch_fav_bitmask &= ~mask;
     changed = true;
   }
+  if (channel_idx < NodePrefs::MAX_SCOPED_CHANNELS && _node_prefs->ch_scope_idx[channel_idx]) {
+    _node_prefs->ch_scope_idx[channel_idx] = 0;   // back to "*", same as a never-configured channel
+    changed = true;
+  }
   int fav_slot = findFavouriteChannelSlot(channel_idx);
   if (fav_slot >= 0) { clearFavouriteSlot(fav_slot); changed = true; }
 

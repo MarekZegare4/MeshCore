@@ -4,6 +4,7 @@
 
 - **The Clock/Lock dashboard gets a separate "Altitude (GPS)" field**, alongside the existing barometric one (now labelled "Altitude (Baro)") — the original single Altitude field only ever read a barometric sensor's telemetry, showing `--` on any board without one even with a perfectly good GPS fix.
 - **Received messages now show how many hops they actually took to reach you**, right in the message list — the same tiny digit-icon a sent message already uses for its repeater/echo count, now shown for incoming DMs and channel posts too, using the hop path the mesh already records for them.
+- **Scope is now a shared, freely-definable list, not one device-wide text field.** Settings › Radio › Scope manages a small named list (`*`/wildcard always first, plus a movable default) instead of a single free-typed name. Each channel picks exactly one scope of its own — a `Scope: <name>` row in the channel's context menu, matching the phone app's own per-channel region picker — and the channel's history title shows the tag when it's set to anything but `*`. Tools › Repeater's "Extra scopes" now multi-selects from the same list instead of comma-typing region names, capped at the same 4 active relay scopes as before. DMs and any not-yet-assigned channel keep using the list's current default, so an existing single-scope setup carries over unchanged on upgrade.
 
 ### Fixes
 

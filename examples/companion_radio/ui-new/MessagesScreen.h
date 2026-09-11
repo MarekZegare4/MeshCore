@@ -68,6 +68,12 @@ class MessagesScreen : public UIScreen {
   uint8_t   _ctx_ch_idx = 0;
   char      _ctx_notif_item[22];
   char      _ctx_melody_item[20];
+  char      _ctx_scope_item[30];   // "Scope: <name>"
+  // Scope sub-picker: single-select from the shared named-scope list,
+  // reusing _ctx_menu itself as a popup -- same idiom as _pin_picker_active's
+  // "Pick slot" submenu below (row index == list index directly, no
+  // per-row value cycling needed since Enter just picks and closes).
+  bool      _scope_pick_active = false;
   char      _ctx_pin_item[28];   // "Pin to dial" or "Unpin (slot N)"
   char      _ctx_fav_item[12]; // "Fav: ON" / "Fav: OFF" — shared by the channel,
                                // contact and room menus (never open at once)
@@ -1145,6 +1151,7 @@ public:
     _pick_bot_room = false;
     _pin_picker_active = false;
     _pin_slot_ch_idx = -1;
+    _scope_pick_active = false;
     _ch_delete_confirm_active = false;
     _pick_fav_slot = -1;
     _direct_entry = false;
@@ -1694,8 +1701,17 @@ public:
 
       ChannelDetails ch;
       the_mesh.getChannel(_sel_channel_idx, ch);
-      char title[24];
-      snprintf(title, sizeof(title), "%.23s", ch.name);
+      char title[32];
+      NodePrefs* p_hdr = _task->getNodePrefs();
+      uint8_t hdr_sc_idx = (p_hdr && _sel_channel_idx < NodePrefs::MAX_SCOPED_CHANNELS) ? p_hdr->ch_scope_idx[_sel_channel_idx] : 0;
+      if (hdr_sc_idx != 0) {
+        // Non-wildcard scope set on this channel -- surface it in the title,
+        // same as the app's own per-channel scope tag, so it's obvious at a
+        // glance the channel isn't sending unscoped.
+        snprintf(title, sizeof(title), "%.16s [%.8s]", ch.name, the_mesh.scopeList().name(hdr_sc_idx));
+      } else {
+        snprintf(title, sizeof(title), "%.23s", ch.name);
+      }
       display.drawCenteredHeader(title, true, _ctx_menu.active);
 
       int ch_hist_count = _history.histCountForChannel(_sel_channel_idx);
@@ -2133,11 +2149,20 @@ public:
       if (_ctx_menu.active) {
         // LEFT/RIGHT -- and Enter, via VALUE_NEXT below -- cycle Notif/Melody/Fav
         // in place; the menu stays open and only Back closes it.
-        if (!_pin_picker_active && !_ch_delete_confirm_active && (keyIsPrev(c) || keyIsNext(c))) {
+        if (!_pin_picker_active && !_ch_delete_confirm_active && !_scope_pick_active && (keyIsPrev(c) || keyIsNext(c))) {
           cycleChannelCtxValue(_ctx_menu.selectedIndex(), keyIsNext(c) ? 1 : -1);
           return true;
         }
         auto res = _ctx_menu.handleInput(c);
+        if (_scope_pick_active) {
+          // Scope sub-menu: row index == list index directly ("*" first).
+          if (res == PopupMenu::SELECTED) {
+            the_mesh.setChannelScope(_ctx_ch_idx, (uint8_t)_ctx_menu.selectedIndex());
+            the_mesh.savePrefs();
+          }
+          if (res != PopupMenu::NONE) _scope_pick_active = false;
+          return true;
+        }
         if (_pin_picker_active) {
           // Slot picker sub-menu: index 0..FAVOURITES_COUNT-1 maps directly to slot.
           if (res == PopupMenu::SELECTED && _pin_slot_ch_idx >= 0) {
@@ -2177,7 +2202,16 @@ public:
             int cleared = (int)_history.chUnread(ch_idx);
             _history.setChUnread(ch_idx, 0);
             markReadAlert(cleared);
-          } else if (sel == 4) {              // Pin / Unpin
+          } else if (sel == 4) {              // Scope
+            NodePrefs* p2 = _task->getNodePrefs();
+            uint8_t cur = (p2 && ch_idx < NodePrefs::MAX_SCOPED_CHANNELS) ? p2->ch_scope_idx[ch_idx] : 0;
+            const ScopeList& sl = the_mesh.scopeList();
+            _ctx_menu.begin("Scope", 4);
+            for (uint8_t i = 0; i <= sl.count; i++) _ctx_menu.addItem(sl.name(i));
+            _ctx_menu.setSelected(cur);
+            _scope_pick_active = true;
+            return true;   // list rebuild below would close the submenu
+          } else if (sel == 5) {              // Pin / Unpin
             int pinned_slot = _task->findFavouriteChannelSlot(ch_idx);
             if (pinned_slot >= 0) {
               _task->clearFavouriteSlot(pinned_slot);
@@ -2193,10 +2227,10 @@ public:
               _pin_picker_active = true;
               return true;   // list rebuild below would close the submenu
             }
-          } else if (sel == 5) {              // Edit
+          } else if (sel == 6) {              // Edit
             ChannelDetails ch;
             if (the_mesh.getChannel(ch_idx, ch)) _ch_view.openEdit(ch_idx, ch.name);
-          } else if (sel == 6) {              // Delete -- confirm first (destructive)
+          } else if (sel == 7) {              // Delete -- confirm first (destructive)
             _ctx_menu.beginConfirm("Delete channel?", "Delete");
             _ch_delete_confirm_active = true;
             return true;   // list rebuild below would close the submenu
@@ -2259,12 +2293,16 @@ public:
         { int pinned_slot = _task->findFavouriteChannelSlot(ch_idx);
           if (pinned_slot >= 0) snprintf(_ctx_pin_item, sizeof(_ctx_pin_item), "Unpin (slot %d)", pinned_slot + 1);
           else                  snprintf(_ctx_pin_item, sizeof(_ctx_pin_item), "Pin to dial"); }
+        { NodePrefs* p2 = _task->getNodePrefs();
+          uint8_t sc_idx = (p2 && ch_idx < NodePrefs::MAX_SCOPED_CHANNELS) ? p2->ch_scope_idx[ch_idx] : 0;
+          snprintf(_ctx_scope_item, sizeof(_ctx_scope_item), "Scope: %s", the_mesh.scopeList().name(sc_idx)); }
         _ctx_menu.begin("Channel options", 6);
         _ctx_menu.addItem("Mark all read");
         _ctx_menu.addValueItem(_ctx_notif_item);
         _ctx_menu.addValueItem(_ctx_melody_item);
         _ctx_fav_idx = 3;
         _ctx_menu.addValueItem(_ctx_fav_item);
+        _ctx_menu.addItem(_ctx_scope_item);
         _ctx_menu.addItem(_ctx_pin_item);
         _ctx_menu.addItem("Edit");
         _ctx_menu.addItem("Delete");

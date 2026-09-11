@@ -7,6 +7,7 @@
 #include "RadioParamsEditor.h"
 #include "RadioPresetPicker.h"
 #include "AccordionList.h"
+#include "PopupMenu.h"   // scope list management's per-row action menu
 
 class SettingsScreen : public UIScreen {
   UITask* _task;
@@ -568,8 +569,9 @@ class SettingsScreen : public UIScreen {
     } else if (item == SCOPE_NAME) {
       display.print("Scope");
       int vx = valCol(display);
+      const ScopeList& sl = the_mesh.scopeList();
       int r = display.drawTextEllipsized(vx, y, display.width() - vx - _reserve,
-                                  (p && p->default_scope_name[0]) ? p->default_scope_name : "(none)", sel);
+                                  sl.name(sl.default_idx), sel);
       if (sel && r > 0) mq_delay = r;
 #if AUTO_OFF_MILLIS > 0
     } else if (item == AUTO_OFF) {
@@ -701,8 +703,44 @@ class SettingsScreen : public UIScreen {
   // Keyboard state for editing message slots
   int            _edit_slot = -1;  // -1 = not editing, 0..9 = slot being edited
   bool           _edit_name = false;  // editing DEVICE_NAME via the keyboard
-  bool           _edit_scope = false; // editing SCOPE_NAME via the keyboard
   KeyboardWidget* _kb;
+
+  // Scope list management (SCOPE_NAME row -> a full-screen add/rename/
+  // delete/set-default list over the shared named-scope list, ScopeList.h).
+  // Row 0 is always "*", rows 1..count are named entries, the trailing row
+  // is a synthetic "+ Add scope" -- same shape as MessagesScreen's channel
+  // picker. _scope_action_menu is the per-row Set default/Rename/Delete
+  // popup (Enter on a row); the keyboard (_kb) is reused for both Add and
+  // Rename's name entry, told apart by _scope_rename_idx (-1 = adding new).
+  bool     _scope_mgmt_active = false;
+  int      _scope_mgmt_sel = 0, _scope_mgmt_scroll = 0;
+  PopupMenu _scope_action_menu;
+  int      _scope_action_idx = -1;   // list index the open action menu targets
+  // -2 = _kb not open for a scope name; -1 = _kb is adding a new scope;
+  // >=0 = _kb is renaming that list index.
+  int      _scope_rename_idx = -2;
+  bool     _scope_delete_confirm_active = false;
+
+  int renderScopeMgmt(DisplayDriver& display) {
+    display.setColor(DisplayDriver::LIGHT);
+    display.drawCenteredHeader("SCOPE", true, _scope_action_menu.active);
+    const ScopeList& sl = the_mesh.scopeList();
+    int total = sl.totalCount() + 1;   // +1 synthetic "+ Add scope" row
+    drawList(display, total, _scope_mgmt_sel, _scope_mgmt_scroll, [&](int idx, int y, bool sel, int reserve) {
+      drawRowSelection(display, y, sel, reserve);
+      display.setCursor(2, y);
+      if (idx == sl.totalCount()) {
+        display.print("+ Add scope");
+      } else {
+        display.print(sl.name((uint8_t)idx));
+        if ((uint8_t)idx == sl.default_idx)
+          display.drawTextRightAlign(display.width() - reserve - 2, y, "[default]");
+      }
+      display.setColor(DisplayDriver::LIGHT);
+    });
+    if (_scope_action_menu.active) _scope_action_menu.render(display);
+    return _scope_action_menu.active ? 50 : 500;
+  }
 
   // Radio preset picker — names are too long for the value column, so Enter on
   // RADIO_PRESET opens it as a full-width scrollable list instead of cycling.
@@ -725,7 +763,10 @@ public:
   void onShow() override {
     _dirty = false;
     _edit_name = false;
-    _edit_scope = false;
+    _scope_mgmt_active = false;
+    _scope_rename_idx = -2;
+    _scope_action_menu.active = false;
+    _scope_delete_confirm_active = false;
     resetList();
     _editor.freq.active = false;
   }
@@ -733,9 +774,11 @@ public:
   int render(DisplayDriver& display) override {
     display.setTextSize(1);
 
-    if (_edit_slot >= 0 || _edit_name || _edit_scope || _picker.saving) {
+    if (_edit_slot >= 0 || _edit_name || _scope_rename_idx != -2 || _picker.saving) {
       return _kb->render(display);
     }
+
+    if (_scope_mgmt_active) return renderScopeMgmt(display);
 
     display.drawCenteredHeader("SETTINGS");
 
@@ -798,17 +841,66 @@ public:
       return true;
     }
 
-    // Keyboard editing mode for the scope name
-    if (_edit_scope) {
+    // Keyboard editing mode for adding/renaming a scope-list entry
+    if (_scope_rename_idx != -2) {
       auto res = _kb->handleInput(c);
       if (res == KeyboardWidget::DONE) {
-        the_mesh.setPrimaryScope(_kb->buf);
-        _dirty = true;
-        _edit_scope = false;
+        if (_scope_rename_idx == -1) the_mesh.addScope(_kb->buf);
+        else                         the_mesh.renameScope((uint8_t)_scope_rename_idx, _kb->buf);
+        _scope_rename_idx = -2;
       } else if (res == KeyboardWidget::CANCELLED) {
-        _edit_scope = false;
+        _scope_rename_idx = -2;
       }
       return true;
+    }
+
+    if (_scope_mgmt_active) {
+      const ScopeList& sl = the_mesh.scopeList();
+      if (_scope_delete_confirm_active) {
+        auto res = _scope_action_menu.handleInput(c);
+        if (res == PopupMenu::SELECTED && _scope_action_menu.selectedIndex() == 0) {   // "Delete"
+          the_mesh.removeScope((uint8_t)_scope_action_idx);
+          if (_scope_mgmt_sel > sl.totalCount()) _scope_mgmt_sel = sl.totalCount();
+        }
+        if (res != PopupMenu::NONE) _scope_delete_confirm_active = false;
+        return true;
+      }
+      if (_scope_action_menu.active) {
+        auto res = _scope_action_menu.handleInput(c);
+        if (res == PopupMenu::SELECTED) {
+          int sel = _scope_action_menu.selectedIndex();
+          if (sel == 0) {                                   // Set default
+            the_mesh.setDefaultScope((uint8_t)_scope_action_idx);
+          } else if (sel == 1 && _scope_action_idx >= 1) {  // Rename
+            _scope_rename_idx = _scope_action_idx;
+            _kb->begin(sl.name((uint8_t)_scope_action_idx), 23);
+            _kb->clearPlaceholders();
+          } else if (sel == 2 && _scope_action_idx >= 1) {  // Delete -- confirm first
+            _scope_action_menu.beginConfirm("Delete scope?", "Delete");
+            _scope_delete_confirm_active = true;
+          }
+        }
+        return true;
+      }
+      if (c == KEY_CANCEL) { _scope_mgmt_active = false; return true; }
+      int total = sl.totalCount() + 1;
+      if (c == KEY_UP)   { _scope_mgmt_sel = (_scope_mgmt_sel > 0) ? _scope_mgmt_sel - 1 : total - 1; return true; }
+      if (c == KEY_DOWN) { _scope_mgmt_sel = (_scope_mgmt_sel + 1 < total) ? _scope_mgmt_sel + 1 : 0; return true; }
+      if (c == KEY_ENTER) {
+        if (_scope_mgmt_sel == sl.totalCount()) {   // "+ Add scope"
+          _scope_rename_idx = -1;
+          _kb->begin("", 23);
+          _kb->clearPlaceholders();
+        } else {
+          _scope_action_idx = _scope_mgmt_sel;
+          bool is_named = _scope_action_idx >= 1;
+          _scope_action_menu.begin("Scope", is_named ? 3 : 1);
+          _scope_action_menu.addItem("Set default");
+          if (is_named) { _scope_action_menu.addItem("Rename"); _scope_action_menu.addItem("Delete"); }
+        }
+        return true;
+      }
+      return true;   // list has focus -- swallow anything else rather than falling through
     }
 
     // Digit-by-digit Freq editor
@@ -1012,9 +1104,9 @@ public:
       return true;
     }
     if (_selected == SCOPE_NAME && p && enter) {
-      _edit_scope = true;
-      _kb->begin(p->default_scope_name, (int)sizeof(p->default_scope_name) - 1);
-      _kb->clearPlaceholders();   // a scope name is literal, not a message
+      _scope_mgmt_active = true;
+      _scope_mgmt_sel = 0;
+      _scope_mgmt_scroll = 0;
       return true;
     }
     if (_selected == REBOOT && enter) {

@@ -618,6 +618,15 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
   rd(&_prefs.msg_wake_screen_off, sizeof(_prefs.msg_wake_screen_off));
   if (_prefs.msg_wake_screen_off > 1) _prefs.msg_wake_screen_off = 0;
 
+  // → 0xC0DE002B: append repeat_extra_scope_mask + ch_scope_idx. A pre-0x2B
+  // file has stray sentinel bytes from that file's own tail sitting here --
+  // read as-is for now, zeroed below once the sentinel mismatch confirms this
+  // really is a pre-0x2B file (can't range-clamp a mask/index here: every bit
+  // or byte value is technically "valid", so garbage can't be told apart from
+  // a real pick until we know which schema version wrote it).
+  rd(&_prefs.repeat_extra_scope_mask, sizeof(_prefs.repeat_extra_scope_mask));
+  rd(_prefs.ch_scope_idx, sizeof(_prefs.ch_scope_idx));
+
   // Schema sentinel: bumped on layout changes. Mismatch means an older file
   // (or a different schema); rd() already zero-inits any fields not present,
   // so we just log it — next savePrefs writes the current sentinel.
@@ -671,6 +680,19 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
     // → 0xC0DE000D: append user_radio_presets. No clamping needed — rd() already
     // zero-inits it on a pre-0x0D file, and name[0]=='\0' is exactly the "empty
     // slot" sentinel the UI already expects.
+    // 0xC0DE002A → 0xC0DE002B: repeat_extra_scope_mask + ch_scope_idx appended.
+    // Unlike the fields above, these can't be left with whatever stray bytes
+    // rd() picked up from a pre-0x2B file's own sentinel tail: every bit/byte
+    // value is "valid" (any mask or index could be a real pick), so garbage
+    // here isn't caught by a range clamp -- it just silently masquerades as a
+    // real one, and can even reactivate later once the scope list grows long
+    // enough to reach an index that used to be out of range. Zero both
+    // outright on this one transition; a fresh scope list is empty anyway, so
+    // there's nothing genuine to lose.
+    if (sentinel < 0xC0DE002B) {
+      _prefs.repeat_extra_scope_mask = 0;
+      memset(_prefs.ch_scope_idx, 0, sizeof(_prefs.ch_scope_idx));
+    }
   }
 
   file.close();
@@ -838,6 +860,8 @@ void DataStore::savePrefs(const NodePrefs& _prefs, double node_lat, double node_
     file.write((uint8_t *)_prefs.favourite_kinds, sizeof(_prefs.favourite_kinds));
     file.write((uint8_t *)&_prefs.fav_sort_off, sizeof(_prefs.fav_sort_off));
     file.write((uint8_t *)&_prefs.msg_wake_screen_off, sizeof(_prefs.msg_wake_screen_off));
+    file.write((uint8_t *)&_prefs.repeat_extra_scope_mask, sizeof(_prefs.repeat_extra_scope_mask));
+    file.write((uint8_t *)_prefs.ch_scope_idx, sizeof(_prefs.ch_scope_idx));
 
     // Tail sentinel — must be last. See NodePrefs::SCHEMA_SENTINEL. Its write is
     // the one we check: once the flash fills, writes return 0, so a good
@@ -1080,6 +1104,66 @@ void DataStore::saveChannels(DataStoreHost* host) {
     commitTempFile(fs, "/channels3.tmp", "/channels3");
   } else {
     fs->remove("/channels3.tmp");   // keep the previous good /channels3
+  }
+}
+
+bool DataStore::loadScopeList(ScopeList& list, const NodePrefs& prefs) {
+  File file = openRead("/scopes1");
+  if (file) {
+    uint8_t hdr[2];
+    bool success = (file.read(hdr, 2) == 2);
+    uint8_t count = success ? hdr[1] : 0;
+    if (count > ScopeList::MAX_SCOPE_ENTRIES) count = 0;   // corrupt header -- start empty rather than overrun entries[]
+
+    uint8_t loaded = 0;
+    for (uint8_t i = 0; i < count; i++) {
+      ScopeEntry e;
+      bool ok = (file.read((uint8_t *)e.name, sizeof(e.name)) == sizeof(e.name));
+      ok = ok && (file.read(e.key, sizeof(e.key)) == sizeof(e.key));
+      if (!ok) break;   // truncated file -- keep whatever loaded fine so far
+      e.name[sizeof(e.name) - 1] = '\0';
+      list.entries[loaded++] = e;
+    }
+    file.close();
+    list.count = loaded;
+    list.default_idx = list.clamp(hdr[0]);
+    return true;
+  }
+
+  // No /scopes1 yet -- one-time migration of an existing single
+  // default_scope_name/key (Settings > Radio > Scope, pre-list) into list
+  // entry 1, so an already-configured device keeps sending under the same
+  // scope after upgrading. A never-configured device just stays at the
+  // default-constructed ScopeList (empty, default_idx 0 == "*").
+  list.count = 0;
+  list.default_idx = 0;
+  if (prefs.default_scope_name[0] != '\0') {
+    ScopeEntry& e = list.entries[0];
+    StrHelper::strncpy(e.name, prefs.default_scope_name, sizeof(e.name));
+    memcpy(e.key, prefs.default_scope_key, sizeof(e.key));   // already-derived key, no need to re-derive
+    list.count = 1;
+    list.default_idx = 1;
+  }
+  saveScopeList(list);   // write /scopes1 so this migration runs only once
+  return true;
+}
+
+void DataStore::saveScopeList(const ScopeList& list) {
+  File file = ::openWrite(_fs, "/scopes1.tmp");
+  if (!file) return;
+
+  uint8_t hdr[2] = { list.default_idx, list.count };
+  bool ok = (file.write(hdr, 2) == 2);
+  for (uint8_t i = 0; ok && i < list.count; i++) {
+    ok = (file.write((uint8_t *)list.entries[i].name, sizeof(list.entries[i].name)) == sizeof(list.entries[i].name));
+    ok = ok && (file.write(list.entries[i].key, sizeof(list.entries[i].key)) == sizeof(list.entries[i].key));
+  }
+  file.close();
+
+  if (ok) {
+    commitTempFile(_fs, "/scopes1.tmp", "/scopes1");
+  } else {
+    _fs->remove("/scopes1.tmp");   // keep the previous good /scopes1
   }
 }
 

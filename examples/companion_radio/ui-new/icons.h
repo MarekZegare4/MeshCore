@@ -776,3 +776,17 @@ inline int favStarWidth(DisplayDriver& d) {
 inline void drawFavStar(DisplayDriver& d, int x, int top_y) {
   miniIconDraw(d, x, top_y, ICON_PG_STAR);
 }
+
+// Multi-select toggle glyph -- an outlined box, filled solid when `on`, same
+// visual language as SettingsScreen's volume/brightness renderBar() (a
+// fillable square) rather than a "[x]"/"[ ]" text glyph that competes with
+// the row's own label for width. Used by PopupMenu's checklist rows and any
+// other multi-select list.
+inline int checkboxWidth(DisplayDriver& d) {
+  return d.getLineHeight() - 2;
+}
+inline void drawCheckbox(DisplayDriver& d, int x, int y, bool on) {
+  int box = checkboxWidth(d);
+  d.drawRect(x, y, box, box);
+  if (on) d.fillRect(x + 2, y + 2, box - 4, box - 4);
+}

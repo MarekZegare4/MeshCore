@@ -42,6 +42,7 @@ class UITask;
 
 #include "DataStore.h"
 #include "NodePrefs.h"
+#include "ScopeList.h"
 
 #include <RTClib.h>
 #include <helpers/ArduinoHelpers.h>
@@ -350,18 +351,44 @@ public:
   // the repeater toggle / network / profile changes.
   void applyRepeaterRadio();
 
-  // Sets this device's own scope (Settings > Radio > Scope) from a single
-  // typed region name, deriving default_scope_key the same "#name" -> SHA256
-  // way as DEFAULT_FLOOD_SCOPE_NAME (see begin()). Empty name clears the
-  // scope. Governs what scope the companion's own messages send under, and
-  // (as scope[0]) what repeat_scope_only accepts. Calls rebuildRepeatScopes().
+  // Sets this device's own default scope (Settings > Radio > Scope, and the
+  // app's CMD_SET_DEFAULT_FLOOD_SCOPE) from a single typed region name.
+  // Keeps default_scope_name/default_scope_key in sync (legacy fields, inert
+  // once /scopes1 exists -- see ScopeList.h) *and* finds-or-creates a
+  // matching entry in the shared scope list, marking it default -- so a
+  // scope set remotely by the app shows up as a real, named entry on the
+  // device's own list too, not just in the two legacy fields. Empty name
+  // clears the default back to list index 0 ("*"). Calls
+  // rebuildRepeatScopes() and persists the list.
   void setPrimaryScope(const char* name);
 
-  // Rebuilds repeat_scopes[]/repeat_scope_count from default_scope_key (slot 0,
-  // if configured) plus the comma-separated repeat_extra_scopes (Tools >
-  // Repeater > Extra scopes). Call after loading prefs at boot and whenever
-  // either scope setting is edited.
+  // Rebuilds repeat_scopes[]/repeat_scope_count from the scope list's current
+  // default entry (slot 0) plus repeat_extra_scope_mask (Tools > Repeater >
+  // Extra scopes -- a toggle over the same list). Call after loading prefs +
+  // the scope list at boot and whenever either scope setting is edited.
   void rebuildRepeatScopes();
+
+  // The shared named-scope list (Settings > Radio > Scope). Read-only outside
+  // MyMesh -- edits go through setPrimaryScope()/addScope()/setChannelScope()/
+  // setDefaultScope() so repeat_scopes[]/persistence stay in sync.
+  const ScopeList& scopeList() const { return _scope_list; }
+  // Adds a new named entry (see ScopeList::add()), persists the list, and
+  // returns its list index (0 if the name's empty or the list's full).
+  uint8_t addScope(const char* name);
+  // Renames list index idx (1..count; a no-op for 0/"*" or an empty name),
+  // re-deriving its key (a scope's key is purely a hash of its name) and
+  // persisting the list.
+  void renameScope(uint8_t idx, const char* name);
+  // Removes list index idx (1..count; a no-op for 0/"*"), persists the list,
+  // fixes up repeat_extra_scope_mask, and clears any channel's ch_scope_idx
+  // that pointed at it (shift-and-clamp, matching ScopeList::remove()).
+  void removeScope(uint8_t idx);
+  // Marks list index idx as the default (used for DMs and any channel/
+  // repeater slot without its own pick). Persists the list and rebuilds
+  // repeat_scopes[].
+  void setDefaultScope(uint8_t idx);
+  // Sets channel_idx's own scope-list pick (0 = "*"). Persists prefs.
+  void setChannelScope(uint8_t channel_idx, uint8_t idx);
 
   bool isAckPending(uint32_t expected_ack) const {
     if (expected_ack == 0) return false;   // 0 marks an empty/cleared slot, not a real ACK
@@ -560,10 +587,17 @@ private:
 
   TransportKey send_scope;
 
+  // The shared named-scope list backing Settings > Radio > Scope, the
+  // channel context menu's Scope: row, and Tools > Repeater > Extra scopes.
+  // Loaded once at boot (see begin()) via DataStore::loadScopeList(), kept in
+  // sync with /scopes1 by every mutator above.
+  ScopeList _scope_list;
+
   // Runtime-only (not persisted) cache of scopes accepted by repeat_scope_only:
-  // slot 0 is default_scope_key (if configured), the rest are derived from the
-  // comma-separated repeat_extra_scopes. Rebuilt by rebuildRepeatScopes() (see
-  // the public section below) whenever either scope setting changes.
+  // slot 0 is the scope list's current default entry (if not "*"), the rest
+  // are derived from repeat_extra_scope_mask's set bits. Rebuilt by
+  // rebuildRepeatScopes() (see the public section below) whenever either
+  // scope setting changes.
   static const uint8_t MAX_REPEAT_SCOPES = 4;
   TransportKey repeat_scopes[MAX_REPEAT_SCOPES];
   uint8_t repeat_scope_count;

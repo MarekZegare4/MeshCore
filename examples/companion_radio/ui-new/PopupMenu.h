@@ -20,13 +20,15 @@ struct PopupMenu {
   // than an action to run, so Enter advances the value and leaves the menu open
   // (see handleInput). One bit per row; PM_MAX_ITEMS fits in a uint32_t.
   uint32_t    _value_mask;
+  bool        _has_checkboxes;   // true once addCheckItem() has been used this begin()
+  uint32_t    _checked_mask;     // per-row checkbox state (addCheckItem/setChecked)
 
   // VALUE_NEXT: Enter landed on a value row -- caller advances that row's value
   // (same as its RIGHT step) and the menu stays open.
   enum Result { NONE, SELECTED, CANCELLED, VALUE_NEXT };
 
   PopupMenu() : _count(0), _sel(0), _scroll(0), _cap(3), active(false), _title(nullptr),
-                _value_mask(0) {}
+                _value_mask(0), _has_checkboxes(false), _checked_mask(0) {}
 
   // `visible` is only a seed for the first frame: render() recomputes _cap from
   // the live display height, so it does not cap or pad the item list.
@@ -34,6 +36,7 @@ struct PopupMenu {
     _count = 0; _sel = 0; _scroll = 0;
     _cap = visible; active = true; _title = title;
     _value_mask = 0;
+    _has_checkboxes = false; _checked_mask = 0;
   }
 
   void addItem(const char* item) {
@@ -48,6 +51,29 @@ struct PopupMenu {
     addItem(item);
     if (_count > i) _value_mask |= (1u << i);
   }
+
+  // A checklist row: a value row (Enter toggles it and stays open, same
+  // VALUE_NEXT contract as addValueItem()) that also draws a fillable-square
+  // checkbox to the right of its label instead of the caller baking "[x]"/
+  // "[ ]" into the text itself -- see icons.h's drawCheckbox(), the same
+  // glyph SettingsScreen's volume/brightness bars use. Once any row uses
+  // this, every row in the menu reserves the checkbox gutter (plain/
+  // addValueItem rows just render without a box in it) -- mixing styles
+  // isn't a use case this menu has today.
+  void addCheckItem(const char* item, bool checked) {
+    int i = _count;
+    addValueItem(item);
+    if (_count > i) {
+      _has_checkboxes = true;
+      setChecked(i, checked);
+    }
+  }
+  void setChecked(int i, bool on) {
+    if (i < 0 || i >= _count) return;
+    if (on) _checked_mask |= (1u << i);
+    else    _checked_mask &= ~(1u << i);
+  }
+  bool isChecked(int i) const { return (_checked_mask >> i) & 1; }
 
   // A two-row Action/Cancel confirm for a destructive or hard-to-reverse
   // action, defaulting the highlight to Cancel (row 1) so accepting it takes
@@ -107,7 +133,8 @@ struct PopupMenu {
       int w = display.getTextWidth(_items[i]);
       if (w > content_w) content_w = w;
     }
-    int bw = content_w + pad * 2 + arrow_w;
+    int box_w = _has_checkboxes ? (checkboxWidth(display) + pad) : 0;
+    int bw = content_w + pad * 2 + arrow_w + box_w;
     int max_bw = display.width() - margin * 2;
     if (bw > max_bw) bw = max_bw;
     int min_bw = cw * 6 + pad * 2;
@@ -130,7 +157,7 @@ struct PopupMenu {
     display.fillRect(bx, by + lh + 2, bw, sh);   // separator just under the title; gap follows
 
     int list_y = by + title_h;
-    int text_w = bw - pad * 2 - arrow_w;
+    int text_w = bw - pad * 2 - arrow_w - box_w;
     if (text_w < cw) text_w = cw;
     for (int i = 0; i < vis && (_scroll + i) < _count; i++) {
       int idx = _scroll + i;
@@ -148,6 +175,7 @@ struct PopupMenu {
       // Return value not needed here: this popup already redraws every 50ms
       // (below), faster than any marquee step, so the animation is already smooth.
       display.drawTextEllipsized(bx + pad, py, text_w, _items[idx], idx == _sel);
+      if (_has_checkboxes) drawCheckbox(display, bx + bw - arrow_w - pad - checkboxWidth(display), py, isChecked(idx));
       display.setColor(DisplayDriver::LIGHT);
     }
 

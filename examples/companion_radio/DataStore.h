@@ -4,6 +4,7 @@
 #include <helpers/ContactInfo.h>
 #include <helpers/ChannelDetails.h>
 #include "NodePrefs.h"
+#include "ScopeList.h"
 
 class DataStoreHost {
 public:
@@ -45,6 +46,15 @@ public:
   // deleted slot is simply absent from the file, not written as empty).
   bool loadChannels(DataStoreHost* host);
   void saveChannels(DataStoreHost* host);
+  // /scopes1: the shared named-scope list (see ScopeList.h). `prefs` is only
+  // read, for a one-time migration of a pre-existing single
+  // default_scope_name/key into list entry 1 -- the file is authoritative
+  // once it exists. Returns true if the file existed or the migration ran
+  // (i.e. `list` reflects real prior configuration); false only means a
+  // genuinely fresh, unconfigured device (list left at its default: empty,
+  // default_idx 0 == "*").
+  bool loadScopeList(ScopeList& list, const NodePrefs& prefs);
+  void saveScopeList(const ScopeList& list);
   void migrateToSecondaryFS();
   uint8_t getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_buf[]);
   bool putBlobByKey(const uint8_t key[], int key_len, const uint8_t src_buf[], uint8_t len);

@@ -677,6 +677,9 @@ bool MyMesh::allowPacketForward(const mesh::Packet* packet) {
 }
 
 void MyMesh::setPrimaryScope(const char* name) {
+  // Keep the legacy fields in sync too -- inert for rebuildRepeatScopes()
+  // once /scopes1 exists, but still what a pre-list save file round-trips,
+  // and cheap to maintain.
   strncpy(_prefs.default_scope_name, name, sizeof(_prefs.default_scope_name) - 1);
   _prefs.default_scope_name[sizeof(_prefs.default_scope_name) - 1] = '\0';
   if (_prefs.default_scope_name[0] == '\0') {
@@ -689,37 +692,85 @@ void MyMesh::setPrimaryScope(const char* name) {
     temp.getAutoKeyFor(0, hashtag, key);
     memcpy(_prefs.default_scope_key, key.key, sizeof(key.key));
   }
+
+  if (_prefs.default_scope_name[0] == '\0') {
+    _scope_list.default_idx = 0;   // "*"
+  } else {
+    // Find-or-create a matching named entry (e.g. the app driving this
+    // remotely via CMD_SET_DEFAULT_FLOOD_SCOPE), then mark it default.
+    uint8_t idx = 0;
+    for (uint8_t i = 0; i < _scope_list.count; i++) {
+      if (strcmp(_scope_list.entries[i].name, _prefs.default_scope_name) == 0) { idx = i + 1; break; }
+    }
+    if (idx == 0) idx = _scope_list.add(_prefs.default_scope_name);
+    _scope_list.default_idx = idx;   // still 0 ("*") if the list was full
+  }
+  if (_store) _store->saveScopeList(_scope_list);
   rebuildRepeatScopes();
+}
+
+uint8_t MyMesh::addScope(const char* name) {
+  uint8_t idx = _scope_list.add(name);
+  if (idx && _store) _store->saveScopeList(_scope_list);
+  return idx;
+}
+
+void MyMesh::renameScope(uint8_t idx, const char* name) {
+  if (idx < 1 || idx > _scope_list.count || !name || !name[0]) return;
+  ScopeEntry& e = _scope_list.entries[idx - 1];
+  StrHelper::strncpy(e.name, name, sizeof(e.name));
+  ScopeList::deriveKey(e.name, e.key);
+  if (_store) _store->saveScopeList(_scope_list);
+  rebuildRepeatScopes();   // this entry's key may be repeat_scopes[]'s default or an extra slot
+}
+
+void MyMesh::removeScope(uint8_t idx) {
+  if (idx < 1 || idx > _scope_list.count) return;
+  _scope_list.remove(idx);
+  // repeat_extra_scope_mask bit (i) tracks list index (i+1) -- shift down the
+  // same way ScopeList::remove() shifted entries[], dropping the removed bit.
+  uint16_t old_mask = _prefs.repeat_extra_scope_mask, new_mask = 0;
+  for (uint8_t i = 0; i < ScopeList::MAX_SCOPE_ENTRIES; i++) {   // one bit per possible list entry, not per MAX_REPEAT_SCOPES active slot
+    if (!(old_mask & (1u << i))) continue;
+    uint8_t list_idx = i + 1;
+    if (list_idx < idx)      new_mask |= (1u << i);
+    else if (list_idx > idx) new_mask |= (1u << (i - 1));
+    // list_idx == idx: the removed one, dropped
+  }
+  _prefs.repeat_extra_scope_mask = new_mask;
+  // Any channel pointed at the removed entry (or shifted ones) needs the same
+  // fix-up ScopeList::remove() applied to default_idx.
+  for (uint8_t i = 0; i < NodePrefs::MAX_SCOPED_CHANNELS; i++) {
+    uint8_t ci = _prefs.ch_scope_idx[i];
+    if (ci == idx) _prefs.ch_scope_idx[i] = 0;
+    else if (ci > idx) _prefs.ch_scope_idx[i] = ci - 1;
+  }
+  if (_store) _store->saveScopeList(_scope_list);
+  rebuildRepeatScopes();
+}
+
+void MyMesh::setDefaultScope(uint8_t idx) {
+  _scope_list.default_idx = _scope_list.clamp(idx);
+  if (_store) _store->saveScopeList(_scope_list);
+  rebuildRepeatScopes();
+}
+
+void MyMesh::setChannelScope(uint8_t channel_idx, uint8_t idx) {
+  if (channel_idx >= NodePrefs::MAX_SCOPED_CHANNELS) return;
+  _prefs.ch_scope_idx[channel_idx] = _scope_list.clamp(idx);
 }
 
 void MyMesh::rebuildRepeatScopes() {
   repeat_scope_count = 0;
 
-  TransportKey primary;
-  memcpy(primary.key, _prefs.default_scope_key, sizeof(primary.key));
+  TransportKey primary = _scope_list.key(_scope_list.default_idx);
   if (!primary.isNull()) repeat_scopes[repeat_scope_count++] = primary;
 
-  TransportKeyStore temp;
-  char names[sizeof(_prefs.repeat_extra_scopes)];
-  strncpy(names, _prefs.repeat_extra_scopes, sizeof(names));
-  names[sizeof(names) - 1] = '\0';
-
-  char* tok = strtok(names, ",");
-  while (tok != NULL && repeat_scope_count < MAX_REPEAT_SCOPES) {
-    while (*tok == ' ') tok++;   // trim leading spaces
-    char* end = tok + strlen(tok);
-    while (end > tok && end[-1] == ' ') *(--end) = '\0';   // trim trailing spaces
-
-    if (*tok != '\0') {
-      char hashtag[1 + sizeof(_prefs.repeat_extra_scopes)];
-      snprintf(hashtag, sizeof(hashtag), "#%s", tok);
-      // Distinct id per scope: getAutoKeyFor() keys its cache on the id ALONE
-      // and ignores the name on a hit, so reusing one id here would hand every
-      // scope after the first the first one's key.
-      temp.getAutoKeyFor(repeat_scope_count, hashtag, repeat_scopes[repeat_scope_count]);
-      repeat_scope_count++;
-    }
-    tok = strtok(NULL, ",");
+  for (uint8_t i = 0; i < _scope_list.count && repeat_scope_count < MAX_REPEAT_SCOPES; i++) {
+    if (!(_prefs.repeat_extra_scope_mask & (1u << i))) continue;
+    uint8_t list_idx = i + 1;
+    TransportKey k = _scope_list.key(list_idx);
+    if (!k.isNull()) repeat_scopes[repeat_scope_count++] = k;
   }
 }
 
@@ -739,25 +790,30 @@ void MyMesh::sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, ui
   if (send_unscoped) {
     sendFlood(pkt, delay_millis, _prefs.path_hash_mode + 1);  // app has explicitly requested un-scoped
   } else {
-    TransportKey default_scope;
-    memcpy(&default_scope.key, _prefs.default_scope_key, sizeof(default_scope.key));
-
+    TransportKey default_scope = _scope_list.key(_scope_list.default_idx);
     auto scope = send_scope.isNull() ? &default_scope : &send_scope;
     sendFloodScoped(*scope, pkt, delay_millis);
   }
 }
 void MyMesh::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis) {
-  // TODO: have per-channel send_scope
   if (apcActive()) apcTrackFloodSend(pkt);   // listen for a repeater echo to drive APC (channels have no ACK)
   trackRelaySend(pkt);                          // and for the UI "relayed" marker
   if (send_unscoped) {
     sendFlood(pkt, delay_millis, _prefs.path_hash_mode + 1);  // app has explicitly requested un-scoped
+  } else if (!send_scope.isNull()) {
+    // App-driven per-send override (CMD_SET_FLOOD_SCOPE_KEY) still wins over
+    // this channel's own on-device pick, same precedence DMs already have.
+    sendFloodScoped(send_scope, pkt, delay_millis);
   } else {
-    TransportKey default_scope;
-    memcpy(&default_scope.key, _prefs.default_scope_key, sizeof(default_scope.key));
-
-    auto scope = send_scope.isNull() ? &default_scope : &send_scope;
-    sendFloodScoped(*scope, pkt, delay_millis);
+    // Resolve THIS channel's own scope-list pick (Messages > channel context
+    // menu > Scope:), falling back to the list's default if this channel has
+    // none of its own or can't be identified (e.g. a bot/room send path that
+    // doesn't go through a slot in channels[]).
+    int channel_idx = findChannelIdx(channel);
+    uint8_t list_idx = (channel_idx >= 0 && channel_idx < NodePrefs::MAX_SCOPED_CHANNELS)
+                       ? _prefs.ch_scope_idx[channel_idx] : _scope_list.default_idx;
+    TransportKey scope = _scope_list.key(list_idx);
+    sendFloodScoped(scope, pkt, delay_millis);
   }
 }
 
@@ -1763,6 +1819,7 @@ void MyMesh::begin(bool has_display) {
 
   // load persisted prefs
   _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
+  _store->loadScopeList(_scope_list, _prefs);
   rebuildRepeatScopes();
 
   // sanitise bad pref values. NaN/inf must be reset BEFORE constrain(): constrain

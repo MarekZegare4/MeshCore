@@ -149,7 +149,17 @@ struct NodePrefs {  // persisted to file
   // Settings > Radio > Scope (comma-separated, e.g. "eu,de") — see
   // MyMesh::rebuildRepeatScopes(). Relay-only: never affects what scope the
   // companion's own messages send under, only what repeat_scope_only accepts.
+  // Superseded by repeat_extra_scope_mask below (a scope-list toggle,
+  // replacing free-typed names); left allocated/unused rather than removed
+  // so the on-disk layout of every field after it stays put.
   char     repeat_extra_scopes[24];
+  // On-disk position is at the struct's append-only tail (0xC0DE002B), even
+  // though grouped here with the rest of repeat_*. Bit i = scope-list index
+  // (i+1) is in this repeater's accept set (index 0, "*", isn't a real scope
+  // so isn't toggleable here) — see ScopeList/MyMesh::rebuildRepeatScopes().
+  // Same MAX_REPEAT_SCOPES=4 runtime cap as before, just resolved from the
+  // shared named-scope list instead of comma-tokenizing repeat_extra_scopes.
+  uint16_t repeat_extra_scope_mask;
   // Optional dedicated radio profile for repeater mode. When repeater_use_profile
   // is 1, enabling the repeater switches the radio to repeater_freq/bw/sf/cr and
   // disabling restores the companion's freq/bw/sf/cr (the fields above). 0 = the
@@ -329,6 +339,16 @@ struct NodePrefs {  // persisted to file
   // Per-channel melody override (2 bitmasks, 1 bit per channel)
   uint64_t ch_notif_melody_set;  // bit i = channel i has explicit melody [del→onChannelRemoved]
   uint64_t ch_notif_melody_2;    // bit i = use melody 2 (else melody 1, when set bit is set)
+  // On-disk position is at the struct's append-only tail (0xC0DE002B), even
+  // though grouped here with the other per-channel overrides. Scope-list
+  // index per channel (see ScopeList) -- 0 ("*"/unscoped) is the correct
+  // zero-init default, matching today's unconfigured behaviour exactly, so
+  // no migration is needed for this field itself. Fixed at 64 slots (not
+  // MAX_GROUP_CHANNELS, which varies by board/variant and would make
+  // sizeof(NodePrefs) variant-dependent) -- same implicit channel-count cap
+  // every ch_notif_*/ch_fav_bitmask uint64_t bitmask above already has.
+  static const uint8_t MAX_SCOPED_CHANNELS = 64;
+  uint8_t  ch_scope_idx[MAX_SCOPED_CHANNELS]; // [del→onChannelRemoved]
   struct DmNotifEntry { uint8_t prefix[4]; uint8_t state; }; // state: 0=default,1=muted,2=force-on
   static const int DM_NOTIF_TABLE_MAX = 16;
   DmNotifEntry dm_notif[DM_NOTIF_TABLE_MAX]; // 16*5 = 80 bytes [del→onContactRemoved]
@@ -568,7 +588,7 @@ struct NodePrefs {  // persisted to file
   // repeat_* fields) instead of at the tail, which shifted every field after
   // them by 25 bytes when loading an older file. Never released, but a dev
   // build wrote it, so the number must not be reused for anything else.
-  static const uint32_t SCHEMA_SENTINEL = 0xC0DE002A;
+  static const uint32_t SCHEMA_SENTINEL = 0xC0DE002B;
 
   // Bit-index for each home page. Used by page_order (entries store bit+1) and
   // by home_pages_mask. Single source of truth — both HomeScreen::pageBit/bitToPage
@@ -708,7 +728,12 @@ struct NodePrefs {  // persisted to file
 // msg_wake_screen_off (0xC0DE002A) landed in the 1 byte of padding the
 // 0xC0DE0029 bump left over -- confirmed via a real sim_companion_radio
 // (native) build, sizeof unchanged at 2760.
-static_assert(sizeof(NodePrefs) == 2760,
+// repeat_extra_scope_mask + ch_scope_idx[64] (0xC0DE002B) added 64 bytes,
+// not 66 -- the struct had 2 bytes of spare tail padding left over from an
+// earlier bump -- confirmed via a real sim_companion_radio (native) build
+// and a real WioTrackerL1_companion_solo_dual (nRF52/ARM) build, sizeof
+// 2824 on both.
+static_assert(sizeof(NodePrefs) == 2824,
               "NodePrefs layout changed — sync DataStore save/load + clamp, bump "
               "SCHEMA_SENTINEL, then update this size (see steps above).");
 

@@ -23,6 +23,7 @@
 #include "RadioPresetPicker.h"
 #include "../RadioPresets.h"
 #include "../MyMesh.h"
+#include "PopupMenu.h"
 
 extern MyMesh the_mesh;
 
@@ -38,7 +39,8 @@ class RepeaterScreen : public UIScreen {
     IT_SKIP, IT_HOPS, IT_YIELD, IT_SNR, IT_SUPPRESS, IT_SCOPE, IT_SCOPE_EXTRA
   };
   uint8_t _items[14];
-  bool    _editing_scope;   // keyboard is entering/editing the extra scopes
+  bool    _scope_picker_active = false;   // multi-select popup over the extra scopes
+  PopupMenu _scope_menu;
   int     _item_count;
 
   RadioPresetPicker _picker;
@@ -127,9 +129,20 @@ class RepeaterScreen : public UIScreen {
         break;
       case IT_SUPPRESS: strncpy(buf, p->repeat_suppress_dup ? "ON" : "OFF", n); break;
       case IT_SCOPE:    strncpy(buf, p->repeat_scope_only ? "ON" : "OFF", n); break;
-      case IT_SCOPE_EXTRA:
-        strncpy(buf, p->repeat_extra_scopes[0] ? p->repeat_extra_scopes : "(none)", n);
+      case IT_SCOPE_EXTRA: {
+        // Bound the scan to the list's real length, not the mask's full bit
+        // width -- a stray high bit (e.g. leftover sentinel bytes from a
+        // pre-scope-list save file) must never be counted as "picked", or a
+        // device that's never touched this picker can show a bogus non-zero
+        // count. rebuildRepeatScopes() already ignores such bits the same way.
+        uint8_t total = the_mesh.scopeList().count;
+        int picked = 0;
+        for (uint8_t i = 0; i < total; i++)
+          if (p->repeat_extra_scope_mask & (1u << i)) picked++;
+        if (total == 0)   strncpy(buf, "(none)", n);
+        else              snprintf(buf, n, "%d/%d", picked, total);
         break;
+      }
       default: strncpy(buf, "", n); break;
     }
     buf[n - 1] = '\0';
@@ -143,17 +156,17 @@ class RepeaterScreen : public UIScreen {
   }
 
 public:
-  RepeaterScreen(UITask* task) : _task(task), _dirty(false), _sel(0), _scroll(0), _item_count(1), _editing_scope(false) {}
+  RepeaterScreen(UITask* task) : _task(task), _dirty(false), _sel(0), _scroll(0), _item_count(1) {}
 
   void onShow() override {
     _dirty = false; _sel = 0; _scroll = 0;
     _picker.menu.active = false; _editor.freq.active = false;
     _picker.saving = false; _picker.deleting = false; _picker.confirm_slot = -1;
-    _editing_scope = false;
+    _scope_picker_active = false; _scope_menu.active = false;
   }
 
   int render(DisplayDriver& display) override {
-    if (_picker.saving || _editing_scope) return _task->keyboard().render(display);
+    if (_picker.saving) return _task->keyboard().render(display);
 
     NodePrefs* p = _task->getNodePrefs();
     buildItems(p);
@@ -178,7 +191,8 @@ public:
     });
     display.setColor(DisplayDriver::LIGHT);
     if (_picker.menu.active) _picker.menu.render(display);
-    return (_picker.menu.active || _editor.active()) ? 50 : 500;
+    if (_scope_picker_active) _scope_menu.render(display);
+    return (_picker.menu.active || _editor.active() || _scope_picker_active) ? 50 : 500;
   }
 
   bool handleInput(char c) override {
@@ -199,19 +213,22 @@ public:
       return true;
     }
 
-    // Keyboard editing mode for the extra (relay-only) scopes
-    if (_editing_scope) {
-      auto res = _task->keyboard().handleInput(c);
-      if (res == KeyboardWidget::DONE) {
-        if (p) {
-          strncpy(p->repeat_extra_scopes, _task->keyboard().buf, sizeof(p->repeat_extra_scopes) - 1);
-          p->repeat_extra_scopes[sizeof(p->repeat_extra_scopes) - 1] = '\0';
-          the_mesh.rebuildRepeatScopes();
-          _dirty = true;
-        }
-        _editing_scope = false;
-      } else if (res == KeyboardWidget::CANCELLED) {
-        _editing_scope = false;
+    // Multi-select popup for the extra (relay-only) scopes -- each row is a
+    // checklist item (see PopupMenu::addCheckItem()); Enter toggles it in
+    // place via VALUE_NEXT and commits straight into prefs, no separate
+    // "apply on close" step needed.
+    if (_scope_picker_active) {
+      auto res = _scope_menu.handleInput(c);
+      if (res == PopupMenu::VALUE_NEXT && p) {
+        int i = _scope_menu.selectedIndex();
+        bool now_on = !_scope_menu.isChecked(i);
+        _scope_menu.setChecked(i, now_on);
+        if (now_on) p->repeat_extra_scope_mask |= (1u << i);
+        else        p->repeat_extra_scope_mask &= ~(uint16_t)(1u << i);
+        the_mesh.rebuildRepeatScopes();
+        _dirty = true;
+      } else if (res != PopupMenu::NONE && res != PopupMenu::VALUE_NEXT) {
+        _scope_picker_active = false;   // Back closes it -- checklist has no plain-select row
       }
       return true;
     }
@@ -319,8 +336,15 @@ public:
       p->repeat_scope_only ^= 1; _dirty = true; return true;
     }
     if (item == IT_SCOPE_EXTRA && enter) {
-      _task->keyboard().begin(p->repeat_extra_scopes, (int)sizeof(p->repeat_extra_scopes) - 1);
-      _editing_scope = true;
+      const ScopeList& sl = the_mesh.scopeList();
+      if (sl.count == 0) {
+        _task->showAlert("No scopes defined", 1200);
+        return true;
+      }
+      _scope_menu.begin("Extra scopes", sl.count < 4 ? sl.count : 4);
+      for (uint8_t i = 0; i < sl.count; i++)
+        _scope_menu.addCheckItem(sl.name((uint8_t)(i + 1)), (p->repeat_extra_scope_mask & (1u << i)) != 0);
+      _scope_picker_active = true;
       return true;
     }
     return false;
