@@ -627,6 +627,14 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
   rd(&_prefs.repeat_extra_scope_mask, sizeof(_prefs.repeat_extra_scope_mask));
   rd(_prefs.ch_scope_idx, sizeof(_prefs.ch_scope_idx));
 
+  // → 0xC0DE002C: append contact_expiry_idx. A pre-0x2C file has a stray
+  // sentinel byte here; clamp anything outside the real option range (see
+  // NodePrefs::contactExpiryDays) back to 0/Off -- an upgrader must opt into
+  // pruning deliberately, not inherit a garbage index that happens to alias a
+  // real option.
+  rd(&_prefs.contact_expiry_idx, sizeof(_prefs.contact_expiry_idx));
+  if (_prefs.contact_expiry_idx >= NodePrefs::CONTACT_EXPIRY_COUNT) _prefs.contact_expiry_idx = 0;
+
   // Schema sentinel: bumped on layout changes. Mismatch means an older file
   // (or a different schema); rd() already zero-inits any fields not present,
   // so we just log it — next savePrefs writes the current sentinel.
@@ -693,6 +701,10 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
       _prefs.repeat_extra_scope_mask = 0;
       memset(_prefs.ch_scope_idx, 0, sizeof(_prefs.ch_scope_idx));
     }
+    // 0xC0DE002B → 0xC0DE002C: contact_expiry_idx appended. Deliberately no
+    // entry here -- unlike the scope fields above it has a small closed set of
+    // legal values, so the unconditional range clamp at its rd() already turns
+    // any stray pre-0x2C byte back into 0/Off on every load.
   }
 
   file.close();
@@ -862,6 +874,7 @@ void DataStore::savePrefs(const NodePrefs& _prefs, double node_lat, double node_
     file.write((uint8_t *)&_prefs.msg_wake_screen_off, sizeof(_prefs.msg_wake_screen_off));
     file.write((uint8_t *)&_prefs.repeat_extra_scope_mask, sizeof(_prefs.repeat_extra_scope_mask));
     file.write((uint8_t *)_prefs.ch_scope_idx, sizeof(_prefs.ch_scope_idx));
+    file.write((uint8_t *)&_prefs.contact_expiry_idx, sizeof(_prefs.contact_expiry_idx));
 
     // Tail sentinel — must be last. See NodePrefs::SCHEMA_SENTINEL. Its write is
     // the one we check: once the flash fills, writes return 0, so a good
@@ -1110,7 +1123,7 @@ void DataStore::saveChannels(DataStoreHost* host) {
 bool DataStore::loadScopeList(ScopeList& list, const NodePrefs& prefs) {
   File file = openRead("/scopes1");
   if (file) {
-    uint8_t hdr[2];
+    uint8_t hdr[2] = { 0, 0 };   // default_idx is read back below even if the header read fails
     bool success = (file.read(hdr, 2) == 2);
     uint8_t count = success ? hdr[1] : 0;
     if (count > ScopeList::MAX_SCOPE_ENTRIES) count = 0;   // corrupt header -- start empty rather than overrun entries[]
@@ -1127,17 +1140,20 @@ bool DataStore::loadScopeList(ScopeList& list, const NodePrefs& prefs) {
     file.close();
     list.count = loaded;
     list.default_idx = list.clamp(hdr[0]);
-    return true;
+    return false;   // the file was already there -- nothing migrated this boot
   }
 
   // No /scopes1 yet -- one-time migration of an existing single
   // default_scope_name/key (Settings > Radio > Scope, pre-list) into list
-  // entry 1, so an already-configured device keeps sending under the same
-  // scope after upgrading. A never-configured device just stays at the
-  // default-constructed ScopeList (empty, default_idx 0 == "*").
+  // entry 1 and mark it default, which covers DMs and the relay filter. The
+  // caller finishes the job for channels by seeding their per-channel picks
+  // once channels[] is loaded (see this function's return value). A
+  // never-configured device just stays at the default-constructed ScopeList
+  // (empty, default_idx 0 == "*").
   list.count = 0;
   list.default_idx = 0;
-  if (prefs.default_scope_name[0] != '\0') {
+  bool migrated = (prefs.default_scope_name[0] != '\0');
+  if (migrated) {
     ScopeEntry& e = list.entries[0];
     StrHelper::strncpy(e.name, prefs.default_scope_name, sizeof(e.name));
     memcpy(e.key, prefs.default_scope_key, sizeof(e.key));   // already-derived key, no need to re-derive
@@ -1145,7 +1161,7 @@ bool DataStore::loadScopeList(ScopeList& list, const NodePrefs& prefs) {
     list.default_idx = 1;
   }
   saveScopeList(list);   // write /scopes1 so this migration runs only once
-  return true;
+  return migrated;       // caller seeds the existing channels with entry 1
 }
 
 void DataStore::saveScopeList(const ScopeList& list) {

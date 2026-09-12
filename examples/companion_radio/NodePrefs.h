@@ -498,6 +498,13 @@ struct NodePrefs {  // persisted to file
   // memset and an older prefs file (no bytes here at all) mean "on", which is
   // the default -- a positive flag would read back as off for every upgrader.
   uint8_t  fav_sort_off;       // 0 = favourites first in every list (default), 1 = natural order
+  // Settings > Contacts > "Expire" + "Prune now". Index into
+  // contactExpiryDays()/contactExpiryLabel() below (0=Off/never, 1=7d, 2=30d,
+  // 3=90d) -- a contact whose ContactInfo::lastmod is older than this is
+  // eligible for the manual Prune-now sweep. Favourites are always exempt
+  // regardless of age. On-disk position is the struct's append-only tail (see
+  // the serialization tripwire below), same as fav_sort_off above.
+  uint8_t  contact_expiry_idx;   // 0 = off (default)
 
   // ── Advert ─────────────────────────────────────────────────────────────
   uint8_t  advert_loc_policy;
@@ -579,6 +586,21 @@ struct NodePrefs {  // persisted to file
   // tuning only — not persisted.
   static const uint16_t TRAIL_AUTOPAUSE_MOVE_M = 15;
 
+  // Contact-expiry thresholds (days) for contact_expiry_idx. Single source of
+  // truth for both the Settings > Contacts "Expire" row's label and the age
+  // MyMesh::countStaleContacts()/pruneStaleContacts() actually applies, so the
+  // number the user picks and the one enforced can't drift apart. 0 = off,
+  // which is also the clamp target for any out-of-range saved index.
+  static const uint8_t CONTACT_EXPIRY_COUNT = 4;
+  static uint16_t contactExpiryDays(uint8_t idx) {
+    static const uint16_t D[CONTACT_EXPIRY_COUNT] = { 0, 7, 30, 90 };
+    return D[idx < CONTACT_EXPIRY_COUNT ? idx : 0];
+  }
+  static const char* contactExpiryLabel(uint8_t idx) {
+    static const char* L[CONTACT_EXPIRY_COUNT] = { "Off", "7d", "30d", "90d" };
+    return L[idx < CONTACT_EXPIRY_COUNT ? idx : 0];
+  }
+
   // Tail sentinel written at the end of /new_prefs. Bump the low byte when
   // adding/removing/reordering fields in DataStore::savePrefs/loadPrefsInt so
   // older saves are detected on load and skipped (zero-init defaults kept).
@@ -588,7 +610,7 @@ struct NodePrefs {  // persisted to file
   // repeat_* fields) instead of at the tail, which shifted every field after
   // them by 25 bytes when loading an older file. Never released, but a dev
   // build wrote it, so the number must not be reused for anything else.
-  static const uint32_t SCHEMA_SENTINEL = 0xC0DE002B;
+  static const uint32_t SCHEMA_SENTINEL = 0xC0DE002C;
 
   // Bit-index for each home page. Used by page_order (entries store bit+1) and
   // by home_pages_mask. Single source of truth — both HomeScreen::pageBit/bitToPage
@@ -733,6 +755,10 @@ struct NodePrefs {  // persisted to file
 // earlier bump -- confirmed via a real sim_companion_radio (native) build
 // and a real WioTrackerL1_companion_solo_dual (nRF52/ARM) build, sizeof
 // 2824 on both.
+// contact_expiry_idx (0xC0DE002C) landed in existing padding elsewhere in
+// the struct -- confirmed via a real sim_companion_radio (native) build and a
+// real WioTrackerL1_companion_solo_dual (nRF52/ARM) build, sizeof unchanged
+// at 2824 on both.
 static_assert(sizeof(NodePrefs) == 2824,
               "NodePrefs layout changed — sync DataStore save/load + clamp, bump "
               "SCHEMA_SENTINEL, then update this size (see steps above).");

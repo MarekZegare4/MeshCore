@@ -3277,7 +3277,8 @@ void UITask::onContactRemoved(const uint8_t* pub_key) {
 // so a channel re-added at a freed slot can't inherit the old one's settings.
 // If you add such a field, add its cleanup below (and mark it in NodePrefs.h).
 // Currently covered: bot_channel_idx, loc_share_channel_idx, ch_notif_melody_*,
-// ch_notif_override/ch_notif_muted, ch_fav_bitmask, favourite_contacts/_kinds.
+// ch_notif_override/ch_notif_muted, ch_fav_bitmask, favourite_contacts/_kinds,
+// ch_scope_idx.
 void UITask::onChannelRemoved(uint8_t channel_idx) {
   if (!_node_prefs) return;
   bool changed = false;

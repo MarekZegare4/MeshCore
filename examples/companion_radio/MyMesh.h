@@ -140,6 +140,22 @@ public:
   bool addDiscoveredContact(const uint8_t* pub_key, const char* name, uint8_t type);
   bool deleteContactByKey(const uint8_t* pub_key);
 
+  // Settings > Contacts > "Expire" / "Prune now" -- a contact with no
+  // advert/update (ContactInfo::lastmod) within NodePrefs::contactExpiryDays(
+  // _prefs.contact_expiry_idx) days is eligible for removal; index 0 = Off.
+  // Favourites are always exempt. Both take the threshold from that one
+  // NodePrefs table, the same one the Settings row labels itself from.
+  uint32_t staleContactThresholdSecs() const;   // 0 when expiry is Off
+  // How many contacts pruneStaleContacts() would remove right now, without
+  // removing anything -- backs the confirm dialog. 0 whenever expiry is Off.
+  // Not const: BaseChatMesh::getContactByIdx() isn't either.
+  int countStaleContacts();
+  // Removes every non-favourite contact whose lastmod is older than the
+  // configured threshold. Returns the number actually removed. The contacts
+  // file is written lazily, like every other contact edit (see
+  // dirty_contacts_expiry / flushDirtyContacts()).
+  int pruneStaleContacts();
+
   // Ping/Trace functionality
   #define PING_RESULT_MAX 4
   typedef void (*PingCallback)(uint32_t tag, int16_t snr_out_x4, int16_t snr_back_x4, uint32_t rtt_ms);
@@ -361,6 +377,14 @@ public:
   // clears the default back to list index 0 ("*"). Calls
   // rebuildRepeatScopes() and persists the list.
   void setPrimaryScope(const char* name);
+
+  // Mirrors the list's current default entry back into the legacy
+  // NodePrefs::default_scope_name/key pair. Those two fields are the only
+  // shape CMD_GET_DEFAULT_FLOOD_SCOPE can report, so any on-device change to
+  // which entry is default (or a rename/delete that moves it) has to refresh
+  // them -- otherwise the app keeps showing, and re-sending, a scope the
+  // device stopped using. Callers persist prefs themselves.
+  void syncLegacyDefaultScope();
 
   // Rebuilds repeat_scopes[]/repeat_scope_count from the scope list's current
   // default entry (slot 0) plus repeat_extra_scope_mask (Tools > Repeater >

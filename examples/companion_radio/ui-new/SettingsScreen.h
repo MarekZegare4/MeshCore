@@ -83,7 +83,7 @@ class SettingsScreen : public UIScreen {
     KEYBOARD_CARDKB_COMPACT,
 #endif
     // Contacts section
-    SECTION_CONTACTS, DM_FILTER, CH_FILTER, ROOM_FILTER, FAV_SORT,
+    SECTION_CONTACTS, DM_FILTER, CH_FILTER, ROOM_FILTER, FAV_SORT, EXPIRE_AFTER, PRUNE_NOW,
     // Messages section
     SECTION_MESSAGES,
     DM_RESEND,
@@ -136,6 +136,8 @@ class SettingsScreen : public UIScreen {
   static const int SOUND_COUNT = 4;
   static const char* AD_SCOPE_LABELS[2];
   static const int AD_SCOPE_COUNT = 2;
+  // ("Expire" reads its labels straight from NodePrefs::contactExpiryLabel(),
+  //  which is also where MyMesh takes the matching day count from.)
 #if FEAT_FULL_REFRESH_SETTING
   static const char* EINK_FULL_REFRESH_LABELS[5];
   static const int   EINK_FULL_REFRESH_COUNT = 5;
@@ -681,6 +683,12 @@ class SettingsScreen : public UIScreen {
       display.print("Favs top");
       display.setCursor(valCol(display), y);
       display.print((p && p->fav_sort_off) ? "OFF" : "ON");
+    } else if (item == EXPIRE_AFTER) {
+      display.print("Expire");
+      display.setCursor(valCol(display), y);
+      display.print(NodePrefs::contactExpiryLabel(p ? p->contact_expiry_idx : 0));
+    } else if (item == PRUNE_NOW) {
+      display.print("Prune now");   // action row: Enter counts + confirms + removes
     } else if (item == DM_RESEND) {
       display.print("Resend");
       display.setCursor(valCol(display), y);
@@ -720,6 +728,12 @@ class SettingsScreen : public UIScreen {
   // >=0 = _kb is renaming that list index.
   int      _scope_rename_idx = -2;
   bool     _scope_delete_confirm_active = false;
+
+  // Contacts > "Prune now" confirm -- a separate PopupMenu from
+  // _scope_action_menu since this one pops up directly over the flat
+  // Settings list (PRUNE_NOW's own row), not nested inside a sub-screen.
+  PopupMenu _prune_confirm;
+  char      _prune_confirm_title[40];
 
   int renderScopeMgmt(DisplayDriver& display) {
     display.setColor(DisplayDriver::LIGHT);
@@ -767,6 +781,7 @@ public:
     _scope_rename_idx = -2;
     _scope_action_menu.active = false;
     _scope_delete_confirm_active = false;
+    _prune_confirm.active = false;
     resetList();
     _editor.freq.active = false;
   }
@@ -802,6 +817,7 @@ public:
       });
 
     if (_picker.menu.active) _picker.menu.render(display);
+    if (_prune_confirm.active) _prune_confirm.render(display);
 
     return (mq_delay > 0 && mq_delay < 2000) ? mq_delay : 2000;
   }
@@ -869,8 +885,14 @@ public:
         auto res = _scope_action_menu.handleInput(c);
         if (res == PopupMenu::SELECTED) {
           int sel = _scope_action_menu.selectedIndex();
-          if (sel == 0) {                                   // Set default
+          if (sel == 0) {                                   // Set as default
             the_mesh.setDefaultScope((uint8_t)_scope_action_idx);
+            // "Default" is the protocol's own word (CMD_SET_DEFAULT_FLOOD_SCOPE,
+            // and what the app shows), but on its own it doesn't say default
+            // for *what* -- channels carry their own pick and don't inherit it.
+            // Spell out the two things it actually governs, at the moment the
+            // user sets it, rather than leaving the list marker to imply more.
+            _task->showAlert("Default: DMs + relay", 1400);
           } else if (sel == 1 && _scope_action_idx >= 1) {  // Rename
             _scope_rename_idx = _scope_action_idx;
             _kb->begin(sl.name((uint8_t)_scope_action_idx), 23);
@@ -895,7 +917,7 @@ public:
           _scope_action_idx = _scope_mgmt_sel;
           bool is_named = _scope_action_idx >= 1;
           _scope_action_menu.begin("Scope", is_named ? 3 : 1);
-          _scope_action_menu.addItem("Set default");
+          _scope_action_menu.addItem("Set as default");
           if (is_named) { _scope_action_menu.addItem("Rename"); _scope_action_menu.addItem("Delete"); }
         }
         return true;
@@ -947,6 +969,18 @@ public:
       } else if (res == PopupMenu::CANCELLED) {
         _picker.deleting = false;
         _picker.confirm_slot = -1;
+      }
+      return true;
+    }
+
+    // Contacts > "Prune now" confirm
+    if (_prune_confirm.active) {
+      auto res = _prune_confirm.handleInput(c);
+      if (res == PopupMenu::SELECTED && _prune_confirm.selectedIndex() == 0) {   // "Remove"
+        int n = the_mesh.pruneStaleContacts();
+        char msg[24];
+        snprintf(msg, sizeof(msg), "Removed %d contact%s", n, n == 1 ? "" : "s");
+        _task->showAlert(msg, 1400);
       }
       return true;
     }
@@ -1210,6 +1244,26 @@ public:
     if (_selected == FAV_SORT && p && (left || right || enter)) {
       p->fav_sort_off = p->fav_sort_off ? 0 : 1;
       _dirty = true;
+      return true;
+    }
+    if (_selected == EXPIRE_AFTER && p && (left || right || enter)) {
+      const int n_opt = NodePrefs::CONTACT_EXPIRY_COUNT;
+      int idx = (p->contact_expiry_idx < n_opt) ? p->contact_expiry_idx : 0;
+      idx = (idx + (left ? n_opt - 1 : 1)) % n_opt;
+      p->contact_expiry_idx = (uint8_t)idx;
+      _dirty = true;
+      return true;
+    }
+    if (_selected == PRUNE_NOW && enter) {
+      int n = the_mesh.countStaleContacts();
+      if (n == 0) {
+        // Two different "nothing happened" reasons, told apart so the row
+        // doesn't look broken when the threshold simply isn't set yet.
+        _task->showAlert(p && p->contact_expiry_idx == 0 ? "Expire is Off" : "No inactive contacts", 1400);
+      } else {
+        snprintf(_prune_confirm_title, sizeof(_prune_confirm_title), "Remove %d contact%s?", n, n == 1 ? "" : "s");
+        _prune_confirm.beginConfirm(_prune_confirm_title, "Remove");
+      }
       return true;
     }
     if (isMsgSlot(_selected) && enter) {

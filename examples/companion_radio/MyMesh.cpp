@@ -474,6 +474,63 @@ bool MyMesh::setContactFavourite(const uint8_t* pub_key, bool fav) {
   return true;
 }
 
+// Shared staleness test for the Settings > Contacts "Prune now" sweep.
+//
+// Caveats on lastmod, deliberately accepted: it's "last touched", not purely
+// "last heard over the air" -- setContactFavourite() above bumps it, and the
+// app can write it outright (CMD_IMPORT_CONTACT / the contact-update handler).
+// Every one of those pushes a contact *away* from being pruned, never towards
+// it, so the error only ever errs on the side of keeping data.
+//
+// Favourites are always exempt; a contact never actually heard from
+// (lastmod==0, shouldn't happen for a real saved contact, but a defensive
+// check costs nothing) or whose lastmod reads ahead of "now" (clock skew, or
+// an unset RTC after a battery pull) is left alone rather than guessed at
+// either way.
+static bool contactIsStale(const ContactInfo& ci, uint32_t now, uint32_t threshold_secs) {
+  if (ci.flags & 0x01) return false;   // favourite bit, same one setContactFavourite() writes
+  if (ci.lastmod == 0 || now < ci.lastmod) return false;
+  return (now - ci.lastmod) >= threshold_secs;
+}
+
+// Threshold in seconds for the configured expiry index, or 0 when expiry is
+// Off -- the one place the NodePrefs table is read, so count and prune can't
+// disagree about which contacts are in scope.
+uint32_t MyMesh::staleContactThresholdSecs() const {
+  return (uint32_t)NodePrefs::contactExpiryDays(_prefs.contact_expiry_idx) * 86400UL;
+}
+
+int MyMesh::countStaleContacts() {
+  uint32_t threshold_secs = staleContactThresholdSecs();
+  if (threshold_secs == 0) return 0;
+  uint32_t now = getRTCClock()->getCurrentTime();
+  int count = 0;
+  int n = getNumContacts();
+  for (int i = 0; i < n; i++) {
+    ContactInfo ci;
+    if (getContactByIdx(MAX_ANON_CONTACTS + i, ci) && contactIsStale(ci, now, threshold_secs)) count++;
+  }
+  return count;
+}
+
+int MyMesh::pruneStaleContacts() {
+  uint32_t threshold_secs = staleContactThresholdSecs();
+  if (threshold_secs == 0) return 0;
+  uint32_t now = getRTCClock()->getCurrentTime();
+  int removed = 0;
+  // Walk backwards: removeContact() compacts the array by shifting everything
+  // *after* the removed slot down one, so entries at lower indices keep their
+  // positions and a descending scan never revisits or skips one. (Forwards
+  // would need a restart after every delete.)
+  for (int i = getNumContacts() - 1; i >= 0; i--) {
+    ContactInfo ci;
+    if (getContactByIdx(MAX_ANON_CONTACTS + i, ci) && contactIsStale(ci, now, threshold_secs)) {
+      if (deleteContactByKey(ci.id.pub_key)) removed++;
+    }
+  }
+  return removed;
+}
+
 void MyMesh::onContactPathUpdated(const ContactInfo &contact) {
   out_frame[0] = PUSH_CODE_PATH_UPDATED;
   memcpy(&out_frame[1], contact.id.pub_key, PUB_KEY_SIZE);
@@ -703,10 +760,26 @@ void MyMesh::setPrimaryScope(const char* name) {
       if (strcmp(_scope_list.entries[i].name, _prefs.default_scope_name) == 0) { idx = i + 1; break; }
     }
     if (idx == 0) idx = _scope_list.add(_prefs.default_scope_name);
-    _scope_list.default_idx = idx;   // still 0 ("*") if the list was full
+    // add() returns 0 only when the list is full. Keep the previous default
+    // rather than taking that as "*": silently dropping to unscoped would put
+    // traffic on the air outside any region, which is a louder failure than
+    // ignoring a request we had no room to honour.
+    if (idx != 0) _scope_list.default_idx = idx;
   }
   if (_store) _store->saveScopeList(_scope_list);
   rebuildRepeatScopes();
+}
+
+void MyMesh::syncLegacyDefaultScope() {
+  uint8_t idx = _scope_list.default_idx;
+  if (idx == 0) {   // "*" -- no default scope, same as the field never being set
+    memset(_prefs.default_scope_name, 0, sizeof(_prefs.default_scope_name));
+    memset(_prefs.default_scope_key, 0, sizeof(_prefs.default_scope_key));
+  } else {
+    const ScopeEntry& e = _scope_list.entries[idx - 1];
+    StrHelper::strncpy(_prefs.default_scope_name, e.name, sizeof(_prefs.default_scope_name));
+    memcpy(_prefs.default_scope_key, e.key, sizeof(_prefs.default_scope_key));
+  }
 }
 
 uint8_t MyMesh::addScope(const char* name) {
@@ -721,6 +794,10 @@ void MyMesh::renameScope(uint8_t idx, const char* name) {
   StrHelper::strncpy(e.name, name, sizeof(e.name));
   ScopeList::deriveKey(e.name, e.key);
   if (_store) _store->saveScopeList(_scope_list);
+  if (_scope_list.default_idx == idx) {   // renaming the default changes its key too
+    syncLegacyDefaultScope();
+    savePrefs();
+  }
   rebuildRepeatScopes();   // this entry's key may be repeat_scopes[]'s default or an extra slot
 }
 
@@ -745,13 +822,23 @@ void MyMesh::removeScope(uint8_t idx) {
     if (ci == idx) _prefs.ch_scope_idx[i] = 0;
     else if (ci > idx) _prefs.ch_scope_idx[i] = ci - 1;
   }
+  syncLegacyDefaultScope();   // ScopeList::remove() may have moved or cleared the default
   if (_store) _store->saveScopeList(_scope_list);
+  // The fix-ups above live in NodePrefs, not in /scopes1, so both files have to
+  // be written here. Saving only the list would leave the two out of step after
+  // a reboot: the entries would be shifted down but every channel's saved index
+  // (and the repeater's mask) would still point at the pre-delete positions, so
+  // they'd silently resolve to the wrong scope -- the same class of bug the
+  // stray-bits clamp in DataStore guards against, just from the other side.
+  savePrefs();
   rebuildRepeatScopes();
 }
 
 void MyMesh::setDefaultScope(uint8_t idx) {
   _scope_list.default_idx = _scope_list.clamp(idx);
+  syncLegacyDefaultScope();   // so CMD_GET_DEFAULT_FLOOD_SCOPE answers with what we now use
   if (_store) _store->saveScopeList(_scope_list);
+  savePrefs();
   rebuildRepeatScopes();
 }
 
@@ -806,9 +893,13 @@ void MyMesh::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pk
     sendFloodScoped(send_scope, pkt, delay_millis);
   } else {
     // Resolve THIS channel's own scope-list pick (Messages > channel context
-    // menu > Scope:), falling back to the list's default if this channel has
-    // none of its own or can't be identified (e.g. a bot/room send path that
-    // doesn't go through a slot in channels[]).
+    // menu > Scope:). Index 0 is "*", which means unscoped -- NOT "inherit the
+    // default": the default is what DMs and the relay filter's primary slot
+    // use, and what a channel is seeded with on upgrade, but once a channel
+    // has a pick that pick is the whole story. The list default is only the
+    // fallback for a channel we can't identify at all (findChannelIdx() == -1,
+    // e.g. a send whose secret isn't in channels[]), where there's no pick to
+    // read in the first place.
     int channel_idx = findChannelIdx(channel);
     uint8_t list_idx = (channel_idx >= 0 && channel_idx < NodePrefs::MAX_SCOPED_CHANNELS)
                        ? _prefs.ch_scope_idx[channel_idx] : _scope_list.default_idx;
@@ -1819,7 +1910,9 @@ void MyMesh::begin(bool has_display) {
 
   // load persisted prefs
   _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
-  _store->loadScopeList(_scope_list, _prefs);
+  // True only on the first boot after upgrading a device that had the old
+  // single Scope field set -- acted on once the channels are loaded, below.
+  bool scope_migrated_legacy = _store->loadScopeList(_scope_list, _prefs);
   rebuildRepeatScopes();
 
   // sanitise bad pref values. NaN/inf must be reset BEFORE constrain(): constrain
@@ -1869,6 +1962,20 @@ void MyMesh::begin(bool has_display) {
   // even after the user explicitly deleted it.
   if (!_store->loadChannels(this)) {
     addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
+  }
+
+  // First boot after upgrading from the single device-wide Scope field: every
+  // channel now carries its own pick, and an unset pick means "*" == unscoped,
+  // not "inherit the default". Left alone, an upgrader's channel traffic would
+  // quietly go out unscoped while their DMs kept the old scope. Seed only the
+  // slots that actually hold a channel today -- a blanket fill would also hand
+  // the scope to whatever channel gets created in an empty slot later on.
+  if (scope_migrated_legacy && _scope_list.default_idx >= 1) {
+    for (uint8_t i = 0; i < NodePrefs::MAX_SCOPED_CHANNELS; i++) {
+      ChannelDetails ch;
+      if (getChannel(i, ch) && ch.name[0]) _prefs.ch_scope_idx[i] = _scope_list.default_idx;
+    }
+    savePrefs();
   }
 
   applyRepeaterRadio();   // companion params, or the repeater profile if relaying with one set
@@ -2925,19 +3032,29 @@ void MyMesh::handleCmdFrame(size_t len) {
       // avoid reading into the key (or past the frame) when no NUL is present.
       int n = (int)strnlen((char *) &cmd_frame[1], 31);
       if (n > 0 && n < 31) {
-        strcpy(_prefs.default_scope_name, (char *) &cmd_frame[1]);
+        // Must go through setPrimaryScope(), not straight into the legacy
+        // fields: since the scope list landed, every send and the relay filter
+        // resolve through _scope_list, so writing default_scope_name/key alone
+        // would leave the app's request with nothing reading it.
+        setPrimaryScope((char *) &cmd_frame[1]);
+        // Honour the key the app derived rather than the one setPrimaryScope()
+        // re-derived from the name. They agree today (same "#name" -> SHA256),
+        // but the app is the authority on its own regions, and a silent
+        // mismatch here would be an on-air difference nothing surfaces.
         memcpy(_prefs.default_scope_key, &cmd_frame[1+31], 16);
-        rebuildRepeatScopes();   // slot 0 of the relay filter tracks this key
+        if (_scope_list.default_idx >= 1) {
+          memcpy(_scope_list.entries[_scope_list.default_idx - 1].key, &cmd_frame[1+31], 16);
+          if (_store) _store->saveScopeList(_scope_list);
+          rebuildRepeatScopes();   // slot 0 of the relay filter tracks this key
+        }
         savePrefs();
         writeOKFrame();
       } else {
         writeErrFrame(ERR_CODE_ILLEGAL_ARG);
       }
     } else {
-      memset(_prefs.default_scope_name, 0, sizeof(_prefs.default_scope_name));  // set default scope to null
-      memset(_prefs.default_scope_key, 0, sizeof(_prefs.default_scope_key));
-      rebuildRepeatScopes();   // drop it from the relay filter too, not just from sends
-      savePrefs();
+      setPrimaryScope("");   // clears the legacy fields and points the list back at "*"
+      savePrefs();           // setPrimaryScope() writes /scopes1 and rebuilds the relay filter
       writeOKFrame();
     }
   } else if (cmd_frame[0] == CMD_GET_DEFAULT_FLOOD_SCOPE) {
